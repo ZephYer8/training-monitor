@@ -60,6 +60,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -413,117 +418,64 @@ private fun ProgressHeroCard(status: TrainingStatus) {
 
 @Composable
 private fun TrainingBuddy(status: String, progress: Float, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "buddy")
-    val motion by transition.animateFloat(
-        initialValue = -1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 620),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "buddy-motion",
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.training_buddy))
+    val animationProgress by animateLottieCompositionAsState(
+        composition = composition,
+        iterations = LottieConstants.IterateForever,
+        isPlaying = status == "training" || status == "idle",
     )
-    val mainColor = when (status) {
+    val accent = when (status) {
         "training" -> Color(0xFF2563EB)
         "finished" -> Color(0xFF16A34A)
         "error" -> Color(0xFFDC2626)
         else -> Color(0xFF6B7280)
     }
 
-    Canvas(modifier = modifier) {
-        val trackStart = 18.dp.toPx()
-        val trackEnd = size.width - 18.dp.toPx()
-        val groundY = size.height * 0.80f
-        val clampedProgress = progress.coerceIn(0f, 1f)
-        val x = trackStart + (trackEnd - trackStart) * clampedProgress.coerceAtLeast(0.06f)
-        val bounce = if (status == "training") abs(motion) * 8.dp.toPx() else 0f
-        val headY = groundY - 66.dp.toPx() - bounce
-        val bodyTop = Offset(x, headY + 16.dp.toPx())
-        val bodyBottom = Offset(x, headY + 44.dp.toPx())
-        val armSwing = if (status == "training") motion * 15.dp.toPx() else 0f
-        val legSwing = if (status == "training") motion * 18.dp.toPx() else 0f
-        val celebrate = status == "finished"
-
-        drawLine(
-            color = Color(0xFFE5E7EB),
-            start = Offset(trackStart, groundY),
-            end = Offset(trackEnd, groundY),
-            strokeWidth = 8.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = mainColor,
-            start = Offset(trackStart, groundY),
-            end = Offset(x, groundY),
-            strokeWidth = 8.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-
-        drawCircle(
-            color = Color(0xFFFFD7A8),
-            radius = 13.dp.toPx(),
-            center = Offset(x, headY),
-        )
-        drawCircle(
-            color = Color(0xFF111827),
-            radius = 2.dp.toPx(),
-            center = Offset(x + 4.dp.toPx(), headY - 2.dp.toPx()),
-        )
-        drawLine(
-            color = mainColor,
-            start = bodyTop,
-            end = bodyBottom,
-            strokeWidth = 6.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-
-        val leftArmEnd = if (celebrate) {
-            Offset(x - 18.dp.toPx(), headY + 4.dp.toPx())
-        } else {
-            Offset(x - 20.dp.toPx(), headY + 30.dp.toPx() + armSwing)
-        }
-        val rightArmEnd = if (celebrate) {
-            Offset(x + 18.dp.toPx(), headY + 4.dp.toPx())
-        } else {
-            Offset(x + 20.dp.toPx(), headY + 30.dp.toPx() - armSwing)
-        }
-        drawLine(mainColor, Offset(x, headY + 25.dp.toPx()), leftArmEnd, 5.dp.toPx(), StrokeCap.Round)
-        drawLine(mainColor, Offset(x, headY + 25.dp.toPx()), rightArmEnd, 5.dp.toPx(), StrokeCap.Round)
-        drawLine(
-            color = Color(0xFF374151),
-            start = bodyBottom,
-            end = Offset(x - 17.dp.toPx(), groundY - 2.dp.toPx() + legSwing / 3),
-            strokeWidth = 5.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = Color(0xFF374151),
-            start = bodyBottom,
-            end = Offset(x + 17.dp.toPx(), groundY - 2.dp.toPx() - legSwing / 3),
-            strokeWidth = 5.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-
-        if (celebrate) {
-            drawCircle(
-                color = Color(0xFFF59E0B),
-                radius = 7.dp.toPx(),
-                center = Offset(x, headY - 26.dp.toPx()),
+    ElevatedCard(
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF8FAFC)),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
+        modifier = modifier,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LottieAnimation(
+                composition = composition,
+                progress = { animationProgress },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(112.dp),
             )
-        }
-        if (status == "error") {
-            drawLine(
-                color = Color(0xFFDC2626),
-                start = Offset(x + 28.dp.toPx(), headY - 20.dp.toPx()),
-                end = Offset(x + 28.dp.toPx(), headY - 8.dp.toPx()),
-                strokeWidth = 4.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-            drawCircle(
-                color = Color(0xFFDC2626),
-                radius = 2.5.dp.toPx(),
-                center = Offset(x + 28.dp.toPx(), headY - 2.dp.toPx()),
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = when (status) {
+                        "training" -> "训练小助手正在盯曲线"
+                        "finished" -> "训练完成，可以收工"
+                        "error" -> "连接异常，先检查服务"
+                        else -> "等待新的训练任务"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF111827),
+                )
+                Text(
+                    text = "进度 ${(progress.coerceIn(0f, 1f) * 100).toInt()}%",
+                    color = Color(0xFF6B7280),
+                )
+                LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
+                    color = accent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp),
+                )
+            }
         }
     }
 }
