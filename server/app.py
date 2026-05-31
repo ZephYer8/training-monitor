@@ -14,6 +14,7 @@ MONITOR_TOKEN = os.getenv("MONITOR_TOKEN", "")
 
 
 class TrainingUpdate(BaseModel):
+    run_id: Optional[str] = None
     epoch: int = Field(ge=0)
     total_epochs: int = Field(ge=1)
     iou: float = Field(ge=0.0, le=100.0)
@@ -28,6 +29,7 @@ def now_text() -> str:
 def empty_state() -> dict:
     return {
         "status": "idle",
+        "run_id": None,
         "epoch": 0,
         "total_epochs": 0,
         "current_iou": None,
@@ -100,11 +102,23 @@ def get_status() -> dict:
 
 @app.post("/api/status", dependencies=[Depends(require_token)])
 def update_status(update: TrainingUpdate) -> dict:
-    if not state.get("started_at") or state.get("status") in {"idle", "finished"}:
+    run_changed = bool(update.run_id and update.run_id != state.get("run_id"))
+    epoch_restarted = bool(state.get("epoch") and update.epoch < state.get("epoch"))
+    should_reset = (
+        not state.get("started_at")
+        or state.get("status") in {"idle", "finished"}
+        or run_changed
+        or epoch_restarted
+    )
+
+    if should_reset:
         state["started_at"] = now_text()
         state["history"] = []
         state["best_iou"] = None
         state["best_epoch"] = None
+        state["run_id"] = update.run_id
+    elif update.run_id:
+        state["run_id"] = update.run_id
 
     best_iou = state.get("best_iou")
     if best_iou is None or update.iou > best_iou:
