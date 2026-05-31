@@ -74,6 +74,7 @@ def main() -> None:
         if latest is not None and latest != last_sent:
             epoch, iou, eta_seconds = latest
             monitor.log(
+                run_id=str(log_path),
                 epoch=epoch,
                 total_epochs=total_epochs,
                 iou=iou,
