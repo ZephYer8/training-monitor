@@ -145,13 +145,20 @@ watch_mmseg() {
 }
 
 auto_mmseg() {
-    local log_path
-    log_path="$(find_latest_mmseg_log || true)"
-    if [ -z "$log_path" ]; then
-        echo "no mmsegmentation log found. Later run: training-monitor watch-mmseg /path/to/train.log"
-        return 0
-    fi
-    watch_mmseg "$log_path" "${1:-0}"
+    ensure_runtime
+    token_init
+    start
+
+    stop_one "$WATCHER_PID" "old watcher"
+
+    cd "$SERVER_DIR"
+    nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch_mmseg.py \
+        --server-url "http://127.0.0.1:$PORT" \
+        --total-epochs "${1:-0}" \
+        --interval 10 \
+        > "$LOG_DIR/watcher.log" 2>&1 &
+    echo $! > "$WATCHER_PID"
+    echo "auto mmsegmentation log detection started"
 }
 
 logs() {
