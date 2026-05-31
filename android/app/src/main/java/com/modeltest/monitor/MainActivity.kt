@@ -6,7 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -115,7 +114,7 @@ private fun MonitorScreen() {
                         error = null
                     }
                     .onFailure {
-                        error = it.message ?: "连接失败"
+                        error = it.message ?: "Connection failed"
                     }
             }
             delay(2_000)
@@ -131,71 +130,75 @@ private fun MonitorScreen() {
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Header(status = status, error = error)
-
-        ElevatedCard(
-            shape = RoundedCornerShape(8.dp),
-            colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
-            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("后端地址", fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = draftUrl,
-                    onValueChange = { draftUrl = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text("访问 token", fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = draftToken,
-                    onValueChange = { draftToken = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Button(
-                    onClick = {
-                        savedUrl = draftUrl.trim()
-                        savedToken = draftToken.trim()
-                        saveBaseUrl(context, savedUrl)
-                        saveToken(context, savedToken)
-                    },
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text("保存")
-                }
-            }
-        }
-
+        SettingsCard(
+            draftUrl = draftUrl,
+            draftToken = draftToken,
+            onUrlChange = { draftUrl = it },
+            onTokenChange = { draftToken = it },
+            onSave = {
+                savedUrl = draftUrl.trim()
+                savedToken = draftToken.trim()
+                saveBaseUrl(context, savedUrl)
+                saveToken(context, savedToken)
+            },
+        )
         ProgressCard(status)
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(
-                title = "当前 IoU",
-                value = formatIou(status.currentIou),
-                modifier = Modifier.weight(1f),
-            )
-            MetricCard(
-                title = "最佳 IoU",
-                value = formatIou(status.bestIou),
-                modifier = Modifier.weight(1f),
-            )
+            MetricCard("Current IoU", formatIou(status.currentIou), Modifier.weight(1f))
+            MetricCard("Best IoU", formatIou(status.bestIou), Modifier.weight(1f))
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             MetricCard(
-                title = "最佳轮次",
+                title = "Best Epoch",
                 value = status.bestEpoch?.let { "Epoch $it" } ?: "--",
                 modifier = Modifier.weight(1f),
             )
-            MetricCard(
-                title = "剩余时间",
-                value = formatEta(status.etaSeconds),
-                modifier = Modifier.weight(1f),
+            MetricCard("ETA", formatEta(status.etaSeconds), Modifier.weight(1f))
+        }
+    }
+}
+
+
+@Composable
+private fun SettingsCard(
+    draftUrl: String,
+    draftToken: String,
+    onUrlChange: (String) -> Unit,
+    onTokenChange: (String) -> Unit,
+    onSave: () -> Unit,
+) {
+    ElevatedCard(
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Backend URL", fontWeight = FontWeight.SemiBold)
+            OutlinedTextField(
+                value = draftUrl,
+                onValueChange = onUrlChange,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
+            Text("Access Token", fontWeight = FontWeight.SemiBold)
+            OutlinedTextField(
+                value = draftToken,
+                onValueChange = onTokenChange,
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = onSave,
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text("Save")
+            }
         }
     }
 }
@@ -210,12 +213,16 @@ private fun Header(status: TrainingStatus, error: String?) {
     ) {
         Column {
             Text(
-                text = "训练监控",
+                text = "Training Monitor",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = if (status.updatedAt.isNullOrBlank()) "等待训练数据" else "更新于 ${status.updatedAt}",
+                text = if (status.updatedAt.isNullOrBlank()) {
+                    "Waiting for training data"
+                } else {
+                    "Updated at ${status.updatedAt}"
+                },
                 color = Color(0xFF6B7280),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -225,7 +232,7 @@ private fun Header(status: TrainingStatus, error: String?) {
     }
     if (error != null) {
         Text(
-            text = "连接失败：$error",
+            text = "Connection failed: $error",
             color = Color(0xFFB91C1C),
             style = MaterialTheme.typography.bodySmall,
         )
@@ -280,7 +287,7 @@ private fun ProgressCard(status: TrainingStatus) {
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Column {
-                    Text("训练进度", color = Color(0xFF6B7280))
+                    Text("Training Progress", color = Color(0xFF6B7280))
                     Text(
                         text = "${status.epoch} / ${status.totalEpochs}",
                         style = MaterialTheme.typography.headlineLarge,
@@ -335,11 +342,12 @@ private suspend fun fetchStatus(client: OkHttpClient, baseUrl: String, token: St
         val requestBuilder = Request.Builder()
             .url("${baseUrl.trim().trimEnd('/')}/api/status")
             .get()
+
         if (token.isNotBlank()) {
             requestBuilder.header("X-Monitor-Token", token)
         }
-        val request = requestBuilder.build()
 
+        val request = requestBuilder.build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 error("HTTP ${response.code}")
@@ -396,10 +404,10 @@ private fun formatEta(seconds: Long?): String {
 
 private fun statusText(status: String): String {
     return when (status) {
-        "training" -> "训练中"
-        "finished" -> "已完成"
-        "error" -> "异常"
-        else -> "空闲"
+        "training" -> "Training"
+        "finished" -> "Finished"
+        "error" -> "Error"
+        else -> "Idle"
     }
 }
 
