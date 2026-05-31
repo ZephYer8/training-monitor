@@ -24,7 +24,11 @@ def iter_files(roots: Iterable[str]) -> Iterable[Path]:
 
 
 def is_supported(path: Path) -> bool:
-    return path.suffix == ".log" or path.name == "results.csv"
+    if path.suffix == ".log":
+        return True
+    if path.suffix != ".csv":
+        return False
+    return any(word in path.name.lower() for word in ("result", "metric", "progress"))
 
 
 def latest_file(roots: List[str]) -> Optional[Path]:
@@ -42,8 +46,8 @@ def latest_file(roots: List[str]) -> Optional[Path]:
 
 
 def parse_file(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
-    if path.name == "results.csv":
-        return parse_yolo_results(path, total_epochs_fallback)
+    if path.suffix == ".csv":
+        return parse_csv_metrics(path, total_epochs_fallback)
     return parse_mmseg_log(path, total_epochs_fallback)
 
 
@@ -73,31 +77,60 @@ def parse_mmseg_line(line: str) -> Optional[Metric]:
     return "mIoU", int(match.group(1)), float(match.group(2)), eta_seconds
 
 
-def parse_yolo_results(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
+def parse_csv_metrics(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
     rows = []
     with path.open("r", encoding="utf-8", errors="ignore", newline="") as file:
         reader = csv.DictReader(file)
         for row in reader:
             normalized = {key.strip(): value for key, value in row.items() if key}
             epoch = parse_int(normalized.get("epoch"))
-            value = parse_float(
-                normalized.get("metrics/mAP50-95(B)")
-                or normalized.get("metrics/mAP50-95")
-                or normalized.get("metrics/mAP50(B)")
-                or normalized.get("metrics/mAP50")
-                or normalized.get("metrics/mAP_0.5:0.95")
-            )
+            metric_name, value = pick_metric(normalized)
             if epoch is None or value is None:
                 continue
-            rows.append(("mAP", epoch + 1, value * 100 if value <= 1 else value, None))
+            rows.append((metric_name, epoch, normalize_metric_value(value), None))
 
     if not rows:
         return total_epochs_fallback or 300, None, None
+
+    if min(item[1] for item in rows) == 0:
+        rows = [(name, epoch + 1, value, eta) for name, epoch, value, eta in rows]
 
     total_epochs = total_epochs_fallback if total_epochs_fallback > 0 else max(item[1] for item in rows)
     best = max(rows, key=lambda item: item[2])
     latest = rows[-1]
     return total_epochs, best, latest
+
+
+def pick_metric(row: dict) -> Tuple[str, Optional[float]]:
+    candidates = [
+        ("mAP", "metrics/mAP50-95(B)"),
+        ("mAP", "metrics/mAP50-95"),
+        ("mAP", "metrics/mAP50(B)"),
+        ("mAP", "metrics/mAP50"),
+        ("mAP", "metrics/mAP_0.5:0.95"),
+        ("mIoU", "mIoU"),
+        ("mIoU", "miou"),
+        ("IoU", "IoU"),
+        ("IoU", "iou"),
+        ("mAP", "mAP"),
+        ("mAP", "map"),
+        ("Accuracy", "accuracy"),
+        ("Accuracy", "acc"),
+        ("Accuracy", "top1"),
+    ]
+    lower_keys = {key.lower(): key for key in row}
+    for label, key in candidates:
+        real_key = key if key in row else lower_keys.get(key.lower())
+        if real_key is None:
+            continue
+        value = parse_float(row.get(real_key))
+        if value is not None:
+            return label, value
+    return "Metric", None
+
+
+def normalize_metric_value(value: float) -> float:
+    return value * 100 if 0 <= value <= 1 else value
 
 
 def parse_int(value: Optional[str]) -> Optional[int]:
@@ -127,6 +160,7 @@ def send_snapshot(
             epoch=best[1],
             total_epochs=total_epochs,
             iou=best[2],
+            metric_name=best[0],
             eta_seconds=latest[3],
         )
 
@@ -135,6 +169,7 @@ def send_snapshot(
         epoch=latest[1],
         total_epochs=total_epochs,
         iou=latest[2],
+        metric_name=latest[0],
         eta_seconds=latest[3],
     )
 
@@ -183,6 +218,7 @@ def main() -> None:
                 epoch=latest[1],
                 total_epochs=total_epochs,
                 iou=latest[2],
+                metric_name=latest[0],
                 eta_seconds=latest[3],
             )
             print(

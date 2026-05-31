@@ -66,6 +66,7 @@ data class TrainingStatus(
     val totalEpochs: Int = 0,
     val currentIou: Double? = null,
     val bestIou: Double? = null,
+    val metricName: String = "IoU",
     val bestEpoch: Int? = null,
     val etaSeconds: Long? = null,
     val updatedAt: String? = null,
@@ -145,8 +146,8 @@ private fun MonitorScreen() {
         ProgressCard(status)
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard("Current IoU", formatIou(status.currentIou), Modifier.weight(1f))
-            MetricCard("Best IoU", formatIou(status.bestIou), Modifier.weight(1f))
+            MetricCard("Current ${status.metricName}", formatMetric(status.currentIou), Modifier.weight(1f))
+            MetricCard("Best ${status.metricName}", formatMetric(status.bestIou), Modifier.weight(1f))
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -360,6 +361,7 @@ private suspend fun fetchStatus(client: OkHttpClient, baseUrl: String, token: St
                 totalEpochs = json.optInt("total_epochs", 0),
                 currentIou = json.optNullableDouble("current_iou"),
                 bestIou = json.optNullableDouble("best_iou"),
+                metricName = json.optString("metric_name", "IoU"),
                 bestEpoch = json.optNullableInt("best_epoch"),
                 etaSeconds = json.optNullableLong("eta_seconds"),
                 updatedAt = json.optString("updated_at", ""),
@@ -384,7 +386,7 @@ private fun JSONObject.optNullableLong(name: String): Long? {
 }
 
 
-private fun formatIou(value: Double?): String {
+private fun formatMetric(value: Double?): String {
     return value?.let { String.format(Locale.US, "%.4f", it) } ?: "--"
 }
 

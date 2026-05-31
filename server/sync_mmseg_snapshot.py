@@ -43,6 +43,7 @@ def main() -> None:
         epoch=best[0],
         total_epochs=total_epochs,
         iou=best[1],
+        metric_name="mIoU",
         eta_seconds=eta_seconds,
     )
     state = monitor.log(
@@ -50,6 +51,7 @@ def main() -> None:
         epoch=latest[0],
         total_epochs=total_epochs,
         iou=latest[1],
+        metric_name="mIoU",
         eta_seconds=eta_seconds,
     )
 

@@ -20,6 +20,7 @@ for epoch in range(1, total_epochs + 1):
         epoch=epoch,
         total_epochs=total_epochs,
         iou=best_iou,
+        metric_name="IoU",
         status=status,
     )
     print(f"epoch={epoch}/{total_epochs}, iou={best_iou:.4f}, status={status}")

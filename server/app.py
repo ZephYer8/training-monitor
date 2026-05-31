@@ -18,6 +18,7 @@ class TrainingUpdate(BaseModel):
     epoch: int = Field(ge=0)
     total_epochs: int = Field(ge=1)
     iou: float = Field(ge=0.0, le=100.0)
+    metric_name: str = "IoU"
     eta_seconds: Optional[int] = Field(default=None, ge=0)
     status: Literal["training", "finished", "error"] = "training"
 
@@ -34,6 +35,7 @@ def empty_state() -> dict:
         "total_epochs": 0,
         "current_iou": None,
         "best_iou": None,
+        "metric_name": "IoU",
         "best_epoch": None,
         "eta_seconds": None,
         "started_at": None,
@@ -129,11 +131,13 @@ def update_status(update: TrainingUpdate) -> dict:
     state["epoch"] = update.epoch
     state["total_epochs"] = update.total_epochs
     state["current_iou"] = update.iou
+    state["metric_name"] = update.metric_name
     state["updated_at"] = now_text()
     state["history"].append(
         {
             "epoch": update.epoch,
             "iou": update.iou,
+            "metric_name": update.metric_name,
             "updated_at": state["updated_at"],
         }
     )

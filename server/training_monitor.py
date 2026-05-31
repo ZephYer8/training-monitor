@@ -17,6 +17,7 @@ class TrainingMonitor:
         epoch: int,
         total_epochs: int,
         iou: float,
+        metric_name: str = "IoU",
         eta_seconds: Optional[int] = None,
         status: str = "training",
     ) -> dict:
@@ -24,6 +25,7 @@ class TrainingMonitor:
             "epoch": epoch,
             "total_epochs": total_epochs,
             "iou": float(iou),
+            "metric_name": metric_name,
             "status": status,
         }
         if run_id is not None:

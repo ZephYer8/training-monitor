@@ -78,6 +78,7 @@ def main() -> None:
                 epoch=epoch,
                 total_epochs=total_epochs,
                 iou=iou,
+                metric_name="mIoU",
                 eta_seconds=eta_seconds,
                 status="training",
             )
