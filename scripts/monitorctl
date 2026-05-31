@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${TRAINING_MONITOR_HOME:-}" ]; then
+    if [ "$(id -u)" = "0" ] && [ -d "/root/autodl-tmp" ]; then
+        BASE="/root/autodl-tmp/training-monitor"
+    else
+        BASE="$HOME/.training-monitor"
+    fi
+else
+    BASE="$TRAINING_MONITOR_HOME"
+fi
+
+PORT="${TRAINING_MONITOR_PORT:-6006}"
+SERVER_DIR="$BASE/server"
+VENV_PY="$BASE/venv/bin/python"
+TOKEN_FILE="$BASE/token.txt"
+STATE_FILE="$BASE/state.json"
+LOG_DIR="$BASE/logs"
+BACKEND_PID="$BASE/backend.pid"
+WATCHER_PID="$BASE/watcher.pid"
+
+mkdir -p "$LOG_DIR"
+
+die() {
+    echo "$1" >&2
+    exit 1
+}
+
+ensure_runtime() {
+    [ -x "$VENV_PY" ] || die "Not installed. Run install.sh first."
+    [ -d "$SERVER_DIR" ] || die "server directory not found. Reinstall first."
+}
+
+pid_alive() {
+    [ -f "$1" ] && kill -0 "$(cat "$1")" >/dev/null 2>&1
+}
+
+token_init() {
+    if [ ! -s "$TOKEN_FILE" ]; then
+        ensure_runtime
+        "$VENV_PY" - <<'PY' > "$TOKEN_FILE"
+import secrets
+print(secrets.token_urlsafe(24))
+PY
+        chmod 600 "$TOKEN_FILE"
+    fi
+}
+
+start() {
+    ensure_runtime
+    token_init
+
+    if pid_alive "$BACKEND_PID"; then
+        echo "server already running, pid=$(cat "$BACKEND_PID")"
+        return
+    fi
+
+    cd "$SERVER_DIR"
+    nohup env \
+        MONITOR_TOKEN="$(cat "$TOKEN_FILE")" \
+        TRAINING_MONITOR_STATE_FILE="$STATE_FILE" \
+        "$VENV_PY" -m uvicorn app:app --host 0.0.0.0 --port "$PORT" \
+        > "$LOG_DIR/backend.log" 2>&1 &
+    echo $! > "$BACKEND_PID"
+    sleep 2
+    echo "server started, pid=$(cat "$BACKEND_PID"), port=$PORT"
+}
+
+stop_one() {
+    local file="$1"
+    local name="$2"
+    if pid_alive "$file"; then
+        kill "$(cat "$file")" || true
+        rm -f "$file"
+        echo "$name stopped"
+    fi
+}
+
+stop_all() {
+    stop_one "$WATCHER_PID" "watcher"
+    stop_one "$BACKEND_PID" "server"
+}
+
+status() {
+    ensure_runtime
+    token_init
+    "$VENV_PY" - <<PY
+import json
+import requests
+
+try:
+    response = requests.get(
+        "http://127.0.0.1:$PORT/api/status",
+        headers={"X-Monitor-Token": "$(cat "$TOKEN_FILE")"},
+        timeout=5,
+    )
+    print("HTTP", response.status_code)
+    print(json.dumps(response.json(), ensure_ascii=False, indent=2))
+except Exception as exc:
+    print("server unavailable:", exc)
+PY
+}
+
+connection() {
+    token_init
+    echo "server port: $PORT"
+    echo "access token: $(cat "$TOKEN_FILE")"
+    echo "app backend url: use your public service url, for example http://SERVER_IP:$PORT"
+}
+
+find_latest_mmseg_log() {
+    find /root/mmsegmentation* "$HOME" /root/autodl-tmp -type f -name "*.log" -printf "%T@ %p\n" 2>/dev/null \
+        | sort -nr \
+        | head -n 1 \
+        | cut -d' ' -f2-
+}
+
+watch_mmseg() {
+    ensure_runtime
+    token_init
+    start
+
+    local log_path="${1:-}"
+    local total_epochs="${2:-0}"
+    [ -n "$log_path" ] || die "usage: training-monitor watch-mmseg /path/to/train.log [total_epochs]"
+    [ -f "$log_path" ] || die "log file not found: $log_path"
+
+    stop_one "$WATCHER_PID" "old watcher"
+
+    cd "$SERVER_DIR"
+    MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" sync_mmseg_snapshot.py \
+        --log-path "$log_path" \
+        --server-url "http://127.0.0.1:$PORT" \
+        --total-epochs "$total_epochs" || true
+
+    nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" watch_mmseg_log.py \
+        --log-path "$log_path" \
+        --server-url "http://127.0.0.1:$PORT" \
+        --total-epochs "$total_epochs" \
+        --interval 5 \
+        > "$LOG_DIR/watcher.log" 2>&1 &
+    echo $! > "$WATCHER_PID"
+    echo "watching mmsegmentation log: $log_path"
+}
+
+auto_mmseg() {
+    local log_path
+    log_path="$(find_latest_mmseg_log || true)"
+    if [ -z "$log_path" ]; then
+        echo "no mmsegmentation log found. Later run: training-monitor watch-mmseg /path/to/train.log"
+        return 0
+    fi
+    watch_mmseg "$log_path" "${1:-0}"
+}
+
+logs() {
+    echo "backend log: $LOG_DIR/backend.log"
+    tail -n 80 "$LOG_DIR/backend.log" 2>/dev/null || true
+    echo
+    echo "watcher log: $LOG_DIR/watcher.log"
+    tail -n 80 "$LOG_DIR/watcher.log" 2>/dev/null || true
+}
+
+case "${1:-help}" in
+    token-init) token_init ;;
+    start) start ;;
+    stop) stop_all ;;
+    restart) stop_all; start ;;
+    status) status ;;
+    token) token_init; cat "$TOKEN_FILE"; echo ;;
+    connection) connection ;;
+    watch-mmseg) shift; watch_mmseg "$@" ;;
+    auto-mmseg) shift; auto_mmseg "$@" ;;
+    logs) logs ;;
+    help|*)
+        echo "usage: training-monitor start|stop|restart|status|token|connection|watch-mmseg|auto-mmseg|logs"
+        ;;
+esac

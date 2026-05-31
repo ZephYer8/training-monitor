@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+server/state.json
+state.json
+token.txt
+logs/
+
+.gradle/
+build/
+android/.gradle/
+android/build/
+android/app/build/
+local.properties
