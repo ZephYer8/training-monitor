@@ -39,12 +39,14 @@ def main() -> None:
     monitor = TrainingMonitor(args.server_url, token=args.token)
 
     monitor.log(
+        run_id=str(Path(args.log_path)),
         epoch=best[0],
         total_epochs=total_epochs,
         iou=best[1],
         eta_seconds=eta_seconds,
     )
     state = monitor.log(
+        run_id=str(Path(args.log_path)),
         epoch=latest[0],
         total_epochs=total_epochs,
         iou=latest[1],
