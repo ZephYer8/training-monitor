@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -907,7 +908,7 @@ private fun SettingsScreen(
 
 
 @Composable
-private fun SettingsCard(title: String, content: @Composable Column.() -> Unit) {
+private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
