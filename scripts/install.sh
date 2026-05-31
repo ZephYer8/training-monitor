@@ -56,7 +56,7 @@ ln -sf "$TRAINING_MONITOR_HOME/scripts/monitorctl" "$BIN_DIR/training-monitor" 2
 
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" token-init
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" start
-"$TRAINING_MONITOR_HOME/scripts/monitorctl" auto-mmseg || true
+"$TRAINING_MONITOR_HOME/scripts/monitorctl" auto-watch || true
 
 echo
 echo "Training Monitor installed"
