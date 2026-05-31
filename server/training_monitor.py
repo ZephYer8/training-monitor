@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 import requests
 
@@ -16,18 +16,25 @@ class TrainingMonitor:
         run_id: Optional[str] = None,
         epoch: int,
         total_epochs: int,
-        iou: float,
+        iou: Optional[float] = None,
         metric_name: str = "IoU",
+        metrics: Optional[Dict[str, float]] = None,
+        loss: Optional[float] = None,
         eta_seconds: Optional[int] = None,
         status: str = "training",
     ) -> dict:
         payload = {
             "epoch": epoch,
             "total_epochs": total_epochs,
-            "iou": float(iou),
             "metric_name": metric_name,
             "status": status,
         }
+        if iou is not None:
+            payload["iou"] = float(iou)
+        if metrics is not None:
+            payload["metrics"] = {name: float(value) for name, value in metrics.items()}
+        if loss is not None:
+            payload["loss"] = float(loss)
         if run_id is not None:
             payload["run_id"] = run_id
         if eta_seconds is not None:
