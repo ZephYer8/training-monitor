@@ -1,7 +1,7 @@
 from datetime import datetime
 import os
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Dict, Literal, Optional
 import json
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -17,8 +17,10 @@ class TrainingUpdate(BaseModel):
     run_id: Optional[str] = None
     epoch: int = Field(ge=0)
     total_epochs: int = Field(ge=1)
-    iou: float = Field(ge=0.0, le=100.0)
+    iou: Optional[float] = None
     metric_name: str = "IoU"
+    metrics: Dict[str, float] = Field(default_factory=dict)
+    loss: Optional[float] = Field(default=None, ge=0.0)
     eta_seconds: Optional[int] = Field(default=None, ge=0)
     status: Literal["training", "finished", "error"] = "training"
 
@@ -36,6 +38,10 @@ def empty_state() -> dict:
         "current_iou": None,
         "best_iou": None,
         "metric_name": "IoU",
+        "metrics": {},
+        "best_metrics": {},
+        "best_epochs": {},
+        "available_metrics": [],
         "best_epoch": None,
         "eta_seconds": None,
         "started_at": None,
@@ -48,9 +54,20 @@ def load_state() -> dict:
     if not DATA_FILE.exists():
         return empty_state()
     try:
-        return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+        loaded = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return empty_state()
+    return normalize_state(loaded)
+
+
+def normalize_state(loaded: dict) -> dict:
+    state = empty_state()
+    state.update(loaded)
+    state.setdefault("metrics", {})
+    state.setdefault("best_metrics", {})
+    state.setdefault("best_epochs", {})
+    state.setdefault("available_metrics", [])
+    return state
 
 
 def save_state(state: dict) -> None:
@@ -81,6 +98,38 @@ def estimate_eta_seconds(state: dict, epoch: int, total_epochs: int) -> Optional
     return int(avg_epoch_seconds * remaining_epochs)
 
 
+def build_metrics(update: TrainingUpdate) -> dict:
+    metrics = {name: float(value) for name, value in update.metrics.items()}
+    if update.iou is not None:
+        metrics[update.metric_name or "IoU"] = float(update.iou)
+    if update.loss is not None:
+        metrics["loss"] = float(update.loss)
+    if not metrics:
+        raise HTTPException(status_code=400, detail="metrics or iou is required")
+    return metrics
+
+
+def metric_should_minimize(name: str) -> bool:
+    lowered = name.lower()
+    return "loss" in lowered or "error" in lowered
+
+
+def better_metric(name: str, value: float, best_value: Optional[float]) -> bool:
+    if best_value is None:
+        return True
+    if metric_should_minimize(name):
+        return value < best_value
+    return value > best_value
+
+
+def update_available_metrics(state: dict, metrics: dict) -> None:
+    available = list(state.get("available_metrics") or [])
+    for name in metrics:
+        if name not in available:
+            available.append(name)
+    state["available_metrics"] = available
+
+
 state = load_state()
 app = FastAPI(title="Training Monitor")
 
@@ -104,6 +153,9 @@ def get_status() -> dict:
 
 @app.post("/api/status", dependencies=[Depends(require_token)])
 def update_status(update: TrainingUpdate) -> dict:
+    metrics = build_metrics(update)
+    primary_name = update.metric_name if update.metric_name in metrics else next(iter(metrics))
+    primary_value = metrics[primary_name]
     run_changed = bool(update.run_id and update.run_id != state.get("run_id"))
     epoch_restarted = bool(state.get("epoch") and update.epoch < state.get("epoch"))
     should_reset = (
@@ -117,27 +169,38 @@ def update_status(update: TrainingUpdate) -> dict:
         state["started_at"] = now_text()
         state["history"] = []
         state["best_iou"] = None
+        state["best_metrics"] = {}
+        state["best_epochs"] = {}
+        state["available_metrics"] = []
         state["best_epoch"] = None
         state["run_id"] = update.run_id
     elif update.run_id:
         state["run_id"] = update.run_id
 
-    best_iou = state.get("best_iou")
-    if best_iou is None or update.iou > best_iou:
-        state["best_iou"] = update.iou
-        state["best_epoch"] = update.epoch
+    best_metrics = state.setdefault("best_metrics", {})
+    best_epochs = state.setdefault("best_epochs", {})
+    for name, value in metrics.items():
+        if better_metric(name, value, best_metrics.get(name)):
+            best_metrics[name] = value
+            best_epochs[name] = update.epoch
+
+    state["best_iou"] = best_metrics.get(primary_name)
+    state["best_epoch"] = best_epochs.get(primary_name)
+    update_available_metrics(state, metrics)
 
     state["status"] = update.status
     state["epoch"] = update.epoch
     state["total_epochs"] = update.total_epochs
-    state["current_iou"] = update.iou
-    state["metric_name"] = update.metric_name
+    state["current_iou"] = primary_value
+    state["metric_name"] = primary_name
+    state["metrics"] = metrics
     state["updated_at"] = now_text()
     state["history"].append(
         {
             "epoch": update.epoch,
-            "iou": update.iou,
-            "metric_name": update.metric_name,
+            "iou": primary_value,
+            "metric_name": primary_name,
+            "metrics": metrics,
             "updated_at": state["updated_at"],
         }
     )
