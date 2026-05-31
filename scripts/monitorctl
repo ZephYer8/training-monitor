@@ -42,27 +42,40 @@ EOF
 
 load_config() {
     write_default_config
-    # shellcheck disable=SC1090
-    . "$CONFIG_FILE"
 
-    PORT="${TRAINING_MONITOR_PORT:-${PORT:-6006}}"
-    PUBLIC_URL="${PUBLIC_URL:-}"
-    LOG_ROOTS="${LOG_ROOTS:-/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root}"
-    LOG_TYPE="${LOG_TYPE:-auto}"
-    AUTO_WATCH="${AUTO_WATCH:-1}"
-    TOTAL_EPOCHS="${TOTAL_EPOCHS:-0}"
-    SCAN_INTERVAL="${SCAN_INTERVAL:-10}"
+    PORT="${TRAINING_MONITOR_PORT:-$(read_config_value PORT 6006)}"
+    PUBLIC_URL="$(read_config_value PUBLIC_URL "")"
+    LOG_ROOTS="$(read_config_value LOG_ROOTS "/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root")"
+    LOG_TYPE="$(read_config_value LOG_TYPE auto)"
+    AUTO_WATCH="$(read_config_value AUTO_WATCH 1)"
+    TOTAL_EPOCHS="$(read_config_value TOTAL_EPOCHS 0)"
+    SCAN_INTERVAL="$(read_config_value SCAN_INTERVAL 10)"
+}
+
+read_config_value() {
+    local key="$1"
+    local fallback="$2"
+    local line
+    line="$(grep -m 1 "^$key=" "$CONFIG_FILE" 2>/dev/null || true)"
+    if [ -n "$line" ]; then
+        printf '%s' "${line#*=}"
+    else
+        printf '%s' "$fallback"
+    fi
 }
 
 save_config_value() {
     local key="$1"
     local value="$2"
+    local tmp="$CONFIG_FILE.tmp.$$"
     write_default_config
-    if grep -q "^$key=" "$CONFIG_FILE"; then
-        sed -i "s|^$key=.*|$key=$value|" "$CONFIG_FILE"
-    else
-        printf '%s=%s\n' "$key" "$value" >> "$CONFIG_FILE"
-    fi
+    awk -v key="$key" -v value="$value" '
+        BEGIN { done = 0 }
+        index($0, key "=") == 1 { print key "=" value; done = 1; next }
+        { print }
+        END { if (!done) print key "=" value }
+    ' "$CONFIG_FILE" > "$tmp"
+    mv "$tmp" "$CONFIG_FILE"
 }
 
 detect_public_url() {
