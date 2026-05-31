@@ -13,6 +13,7 @@ class TrainingMonitor:
     def log(
         self,
         *,
+        run_id: Optional[str] = None,
         epoch: int,
         total_epochs: int,
         iou: float,
@@ -25,6 +26,8 @@ class TrainingMonitor:
             "iou": float(iou),
             "status": status,
         }
+        if run_id is not None:
+            payload["run_id"] = run_id
         if eta_seconds is not None:
             payload["eta_seconds"] = int(eta_seconds)
 
