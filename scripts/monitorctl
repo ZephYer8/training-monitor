@@ -11,7 +11,7 @@ else
     BASE="$TRAINING_MONITOR_HOME"
 fi
 
-PORT="${TRAINING_MONITOR_PORT:-6006}"
+CONFIG_FILE="$BASE/config.env"
 SERVER_DIR="$BASE/server"
 VENV_PY="$BASE/venv/bin/python"
 TOKEN_FILE="$BASE/token.txt"
@@ -27,6 +27,67 @@ die() {
     exit 1
 }
 
+write_default_config() {
+    [ -f "$CONFIG_FILE" ] && return
+    cat > "$CONFIG_FILE" <<EOF
+PORT=6006
+PUBLIC_URL=
+LOG_ROOTS=/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root
+LOG_TYPE=auto
+AUTO_WATCH=1
+TOTAL_EPOCHS=0
+SCAN_INTERVAL=10
+EOF
+}
+
+load_config() {
+    write_default_config
+    # shellcheck disable=SC1090
+    . "$CONFIG_FILE"
+
+    PORT="${TRAINING_MONITOR_PORT:-${PORT:-6006}}"
+    PUBLIC_URL="${PUBLIC_URL:-}"
+    LOG_ROOTS="${LOG_ROOTS:-/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root}"
+    LOG_TYPE="${LOG_TYPE:-auto}"
+    AUTO_WATCH="${AUTO_WATCH:-1}"
+    TOTAL_EPOCHS="${TOTAL_EPOCHS:-0}"
+    SCAN_INTERVAL="${SCAN_INTERVAL:-10}"
+}
+
+save_config_value() {
+    local key="$1"
+    local value="$2"
+    write_default_config
+    if grep -q "^$key=" "$CONFIG_FILE"; then
+        sed -i "s|^$key=.*|$key=$value|" "$CONFIG_FILE"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$CONFIG_FILE"
+    fi
+}
+
+detect_public_url() {
+    load_config
+    if [ -n "$PUBLIC_URL" ]; then
+        echo "$PUBLIC_URL"
+        return
+    fi
+
+    local autodl_var="AutoDLService${PORT}URL"
+    local autodl_url="${!autodl_var:-${AutoDLServiceURL:-}}"
+    if [ -n "$autodl_url" ]; then
+        echo "$autodl_url"
+        return
+    fi
+
+    local ip
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    if [ -n "$ip" ]; then
+        echo "http://$ip:$PORT"
+    else
+        echo "http://SERVER_IP:$PORT"
+    fi
+}
+
 ensure_runtime() {
     [ -x "$VENV_PY" ] || die "Not installed. Run install.sh first."
     [ -d "$SERVER_DIR" ] || die "server directory not found. Reinstall first."
@@ -37,8 +98,8 @@ pid_alive() {
 }
 
 token_init() {
+    ensure_runtime
     if [ ! -s "$TOKEN_FILE" ]; then
-        ensure_runtime
         "$VENV_PY" - <<'PY' > "$TOKEN_FILE"
 import secrets
 print(secrets.token_urlsafe(24))
@@ -49,22 +110,26 @@ PY
 
 start() {
     ensure_runtime
+    load_config
     token_init
 
     if pid_alive "$BACKEND_PID"; then
         echo "server already running, pid=$(cat "$BACKEND_PID")"
-        return
+    else
+        cd "$SERVER_DIR"
+        nohup env \
+            MONITOR_TOKEN="$(cat "$TOKEN_FILE")" \
+            TRAINING_MONITOR_STATE_FILE="$STATE_FILE" \
+            "$VENV_PY" -m uvicorn app:app --host 0.0.0.0 --port "$PORT" \
+            > "$LOG_DIR/backend.log" 2>&1 &
+        echo $! > "$BACKEND_PID"
+        sleep 2
+        echo "server started, pid=$(cat "$BACKEND_PID"), port=$PORT"
     fi
 
-    cd "$SERVER_DIR"
-    nohup env \
-        MONITOR_TOKEN="$(cat "$TOKEN_FILE")" \
-        TRAINING_MONITOR_STATE_FILE="$STATE_FILE" \
-        "$VENV_PY" -m uvicorn app:app --host 0.0.0.0 --port "$PORT" \
-        > "$LOG_DIR/backend.log" 2>&1 &
-    echo $! > "$BACKEND_PID"
-    sleep 2
-    echo "server started, pid=$(cat "$BACKEND_PID"), port=$PORT"
+    if [ "$AUTO_WATCH" = "1" ]; then
+        auto_watch
+    fi
 }
 
 stop_one() {
@@ -82,8 +147,14 @@ stop_all() {
     stop_one "$BACKEND_PID" "server"
 }
 
+restart() {
+    stop_all
+    start
+}
+
 status() {
     ensure_runtime
+    load_config
     token_init
     "$VENV_PY" - <<PY
 import json
@@ -103,62 +174,113 @@ PY
 }
 
 connection() {
+    load_config
     token_init
     echo "server port: $PORT"
+    echo "backend url: $(detect_public_url)"
     echo "access token: $(cat "$TOKEN_FILE")"
-    echo "app backend url: use your public service url, for example http://SERVER_IP:$PORT"
 }
 
-find_latest_mmseg_log() {
-    find /root/mmsegmentation* "$HOME" /root/autodl-tmp -type f -name "*.log" -printf "%T@ %p\n" 2>/dev/null \
-        | sort -nr \
-        | head -n 1 \
-        | cut -d' ' -f2-
-}
-
-watch_mmseg() {
+setup() {
     ensure_runtime
+    write_default_config
+    load_config
+
+    read -r -p "Port [$PORT]: " input_port
+    [ -n "$input_port" ] && save_config_value PORT "$input_port"
+
+    read -r -p "Public URL [$(detect_public_url)]: " input_url
+    [ -n "$input_url" ] && save_config_value PUBLIC_URL "$input_url"
+
+    read -r -p "Log roots [$LOG_ROOTS]: " input_roots
+    [ -n "$input_roots" ] && save_config_value LOG_ROOTS "$input_roots"
+
+    read -r -p "Log type auto/mmseg/yolo [${LOG_TYPE:-auto}]: " input_type
+    [ -n "$input_type" ] && save_config_value LOG_TYPE "$input_type"
+
+    read -r -p "Auto watch 1/0 [$AUTO_WATCH]: " input_watch
+    [ -n "$input_watch" ] && save_config_value AUTO_WATCH "$input_watch"
+
+    echo "saved: $CONFIG_FILE"
+    connection
+}
+
+config_cmd() {
+    write_default_config
+    case "${1:-show}" in
+        show)
+            cat "$CONFIG_FILE"
+            ;;
+        set)
+            [ $# -ge 3 ] || die "usage: training-monitor config set KEY VALUE"
+            save_config_value "$2" "$3"
+            ;;
+        path)
+            echo "$CONFIG_FILE"
+            ;;
+        *)
+            die "usage: training-monitor config show|set|path"
+            ;;
+    esac
+}
+
+watch_file() {
+    ensure_runtime
+    load_config
     token_init
     start
 
     local log_path="${1:-}"
-    local total_epochs="${2:-0}"
-    [ -n "$log_path" ] || die "usage: training-monitor watch-mmseg /path/to/train.log [total_epochs]"
-    [ -f "$log_path" ] || die "log file not found: $log_path"
+    local total_epochs="${2:-$TOTAL_EPOCHS}"
+    [ -n "$log_path" ] || die "usage: training-monitor watch-file /path/to/log-or-results.csv [total_epochs]"
+    [ -f "$log_path" ] || die "file not found: $log_path"
 
     stop_one "$WATCHER_PID" "old watcher"
 
     cd "$SERVER_DIR"
-    MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" sync_mmseg_snapshot.py \
-        --log-path "$log_path" \
-        --server-url "http://127.0.0.1:$PORT" \
-        --total-epochs "$total_epochs" || true
-
-    nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" watch_mmseg_log.py \
-        --log-path "$log_path" \
-        --server-url "http://127.0.0.1:$PORT" \
-        --total-epochs "$total_epochs" \
-        --interval 5 \
-        > "$LOG_DIR/watcher.log" 2>&1 &
+    if [ "$LOG_TYPE" = "yolo" ] || [ "$(basename "$log_path")" = "results.csv" ]; then
+        nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch.py \
+            --server-url "http://127.0.0.1:$PORT" \
+            --total-epochs "$total_epochs" \
+            --interval 5 \
+            --roots "$log_path" \
+            > "$LOG_DIR/watcher.log" 2>&1 &
+    else
+        MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" sync_mmseg_snapshot.py \
+            --log-path "$log_path" \
+            --server-url "http://127.0.0.1:$PORT" \
+            --total-epochs "$total_epochs" || true
+        nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" watch_mmseg_log.py \
+            --log-path "$log_path" \
+            --server-url "http://127.0.0.1:$PORT" \
+            --total-epochs "$total_epochs" \
+            --interval 5 \
+            > "$LOG_DIR/watcher.log" 2>&1 &
+    fi
     echo $! > "$WATCHER_PID"
-    echo "watching mmsegmentation log: $log_path"
+    echo "watching: $log_path"
 }
 
-auto_mmseg() {
+auto_watch() {
     ensure_runtime
+    load_config
     token_init
-    start
 
-    stop_one "$WATCHER_PID" "old watcher"
+    if pid_alive "$WATCHER_PID"; then
+        echo "watcher already running, pid=$(cat "$WATCHER_PID")"
+        return
+    fi
 
     cd "$SERVER_DIR"
-    nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch_mmseg.py \
+    # shellcheck disable=SC2086
+    nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch.py \
         --server-url "http://127.0.0.1:$PORT" \
-        --total-epochs "${1:-0}" \
-        --interval 10 \
+        --total-epochs "$TOTAL_EPOCHS" \
+        --interval "$SCAN_INTERVAL" \
+        --roots $LOG_ROOTS \
         > "$LOG_DIR/watcher.log" 2>&1 &
     echo $! > "$WATCHER_PID"
-    echo "auto mmsegmentation log detection started"
+    echo "auto training log detection started"
 }
 
 logs() {
@@ -173,14 +295,18 @@ case "${1:-help}" in
     token-init) token_init ;;
     start) start ;;
     stop) stop_all ;;
-    restart) stop_all; start ;;
+    restart) restart ;;
     status) status ;;
     token) token_init; cat "$TOKEN_FILE"; echo ;;
     connection) connection ;;
-    watch-mmseg) shift; watch_mmseg "$@" ;;
-    auto-mmseg) shift; auto_mmseg "$@" ;;
+    setup) setup ;;
+    config) shift; config_cmd "$@" ;;
+    watch-file) shift; watch_file "$@" ;;
+    watch-mmseg) shift; watch_file "$@" ;;
+    auto-watch) auto_watch ;;
+    auto-mmseg) auto_watch ;;
     logs) logs ;;
     help|*)
-        echo "usage: training-monitor start|stop|restart|status|token|connection|watch-mmseg|auto-mmseg|logs"
+        echo "usage: training-monitor start|stop|restart|status|token|connection|setup|config|watch-file|auto-watch|logs"
         ;;
 esac
