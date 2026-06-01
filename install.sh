@@ -19,14 +19,35 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-ARCHIVE_URL="$REPO_URL/archive/refs/heads/$REF.tar.gz"
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$TMP_DIR" --strip-components=1
-elif command -v wget >/dev/null 2>&1; then
-    wget -qO- "$ARCHIVE_URL" | tar -xz -C "$TMP_DIR" --strip-components=1
-else
-    echo "curl or wget is required"
+ARCHIVE_PATH="$REPO_URL/archive/refs/heads/$REF.tar.gz"
+ARCHIVE_URLS="${TRAINING_MONITOR_ARCHIVE_URLS:-$ARCHIVE_PATH https://gh-proxy.com/$ARCHIVE_PATH https://hub.gitmirror.com/$ARCHIVE_PATH}"
+ARCHIVE_FILE="$TMP_DIR/source.tar.gz"
+
+download_archive() {
+    local url
+    for url in $ARCHIVE_URLS; do
+        echo "Downloading: $url"
+        if command -v curl >/dev/null 2>&1; then
+            if curl -fL --connect-timeout 10 --retry 2 --retry-delay 1 "$url" -o "$ARCHIVE_FILE"; then
+                return 0
+            fi
+        elif command -v wget >/dev/null 2>&1; then
+            if wget -T 10 -t 2 -O "$ARCHIVE_FILE" "$url"; then
+                return 0
+            fi
+        else
+            echo "curl or wget is required"
+            exit 1
+        fi
+    done
+    return 1
+}
+
+download_archive || {
+    echo "Failed to download Training Monitor source archive." >&2
     exit 1
-fi
+}
+
+tar -xzf "$ARCHIVE_FILE" -C "$TMP_DIR" --strip-components=1
 
 exec bash "$TMP_DIR/scripts/install.sh" "$@"

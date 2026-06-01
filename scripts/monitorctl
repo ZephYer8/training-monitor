@@ -172,6 +172,9 @@ status() {
     "$VENV_PY" - <<PY
 import json
 import requests
+from pathlib import Path
+
+state_file = Path("$STATE_FILE")
 
 try:
     response = requests.get(
@@ -183,6 +186,9 @@ try:
     print(json.dumps(response.json(), ensure_ascii=False, indent=2))
 except Exception as exc:
     print("server unavailable:", exc)
+    if state_file.exists():
+        print("local cached state:")
+        print(json.dumps(json.loads(state_file.read_text(encoding="utf-8")), ensure_ascii=False, indent=2))
 PY
 }
 

@@ -11,7 +11,13 @@ if [ -z "${TRAINING_MONITOR_HOME:-}" ]; then
     fi
 fi
 
-BIN_DIR="${TRAINING_MONITOR_BIN_DIR:-$HOME/.local/bin}"
+if [ -n "${TRAINING_MONITOR_BIN_DIR:-}" ]; then
+    BIN_DIR="$TRAINING_MONITOR_BIN_DIR"
+elif [ "$(id -u)" = "0" ] && [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
+    BIN_DIR="/usr/local/bin"
+else
+    BIN_DIR="$HOME/.local/bin"
+fi
 PYTHON="${TRAINING_MONITOR_PYTHON:-}"
 
 if [ -z "$TRAINING_MONITOR_HOME" ] || [ "$TRAINING_MONITOR_HOME" = "/" ]; then
@@ -54,6 +60,20 @@ fi
 chmod +x "$TRAINING_MONITOR_HOME/scripts/monitorctl"
 ln -sf "$TRAINING_MONITOR_HOME/scripts/monitorctl" "$BIN_DIR/training-monitor" 2>/dev/null || true
 
+case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *)
+        if [ "$BIN_DIR" = "$HOME/.local/bin" ]; then
+            mkdir -p "$HOME"
+            touch "$HOME/.bashrc"
+            if ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null; then
+                printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$HOME/.bashrc"
+            fi
+            export PATH="$BIN_DIR:$PATH"
+        fi
+        ;;
+esac
+
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" token-init
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" start
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" auto-watch || true
@@ -61,6 +81,11 @@ ln -sf "$TRAINING_MONITOR_HOME/scripts/monitorctl" "$BIN_DIR/training-monitor" 2
 echo
 echo "Training Monitor installed"
 echo "Control command: $TRAINING_MONITOR_HOME/scripts/monitorctl"
-echo "If $BIN_DIR is in PATH, you can run: training-monitor"
+echo "Command: $BIN_DIR/training-monitor"
+if command -v training-monitor >/dev/null 2>&1; then
+    echo "You can run: training-monitor status"
+else
+    echo "If your shell cannot find it, run: $BIN_DIR/training-monitor status"
+fi
 echo
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" connection

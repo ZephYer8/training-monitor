@@ -14,6 +14,8 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 > 说明：不同深度学习框架没有统一日志格式，所以不可能百分百自动识别所有项目。这个工具的原则是：常见日志自动识别，特殊项目用统一接口接入。
 
+新版 App 会缓存最后一次成功同步的数据。服务器关机、训练完成后断网、临时网络不稳定时，手机端仍然能看到最后一次同步到本地的训练进度和曲线。
+
 ## 1. 快速开始
 
 在训练服务器上执行：
@@ -22,10 +24,29 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 curl -fsSL https://raw.githubusercontent.com/ZephYer8/training-monitor/main/install.sh | bash
 ```
 
+如果服务器访问 GitHub 很慢，安装脚本会自动尝试镜像下载源码。也可以手动指定镜像：
+
+```bash
+TRAINING_MONITOR_ARCHIVE_URLS="https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/archive/refs/heads/main.tar.gz" \
+curl -fsSL https://raw.githubusercontent.com/ZephYer8/training-monitor/main/install.sh | bash
+```
+
 安装完成后查看连接信息：
 
 ```bash
 training-monitor connection
+```
+
+如果提示 `training-monitor: command not found`，先运行完整路径：
+
+```bash
+/root/autodl-tmp/training-monitor/scripts/monitorctl status
+```
+
+root 用户新版默认会同时创建：
+
+```text
+/usr/local/bin/training-monitor
 ```
 
 你会看到类似输出：
@@ -198,12 +219,41 @@ App 会显示：
 
 - 当前训练状态
 - 当前 epoch / 总 epoch
-- 当前指标，例如 `Current mIoU` 或 `Current mAP`
-- 最好指标
-- 最好指标所在 epoch
+- `Best mIoU` / `Best mAP` / `Best Accuracy`
+- `Best Epoch`
+- `Current` 当前指标
 - ETA 预计剩余时间
+- 指标曲线，带横坐标 epoch 和纵坐标数值
 
-## 6. 自动检测训练
+指标名称在 App 中优先使用英文，例如 `Loss`、`mIoU`、`mAP`、`Accuracy`，这样更接近训练面板和论文实验记录的习惯。
+
+## 6. 离线缓存和历史数据
+
+App 每次成功请求 `/api/status` 后，都会把完整状态缓存在手机本地。
+
+这意味着：
+
+- 服务器临时断网时，App 不会变成空白。
+- 服务器关机后，App 仍能显示最后一次同步到手机的数据。
+- 已经同步过的 loss / mIoU / mAP 曲线可以继续查看。
+
+限制也很直接：如果训练完成后手机从来没有同步到最终状态，服务器又已经关机，App 不可能凭空拿到服务器上未同步的数据。所以训练时建议保持 App 至少成功连接过一次。
+
+服务器端也会把状态保存到安装目录：
+
+```text
+/root/autodl-tmp/training-monitor/state.json
+```
+
+如果后端服务暂时没启动，仍可尝试：
+
+```bash
+training-monitor status
+```
+
+新版命令会在服务不可用时读取本地缓存状态。
+
+## 7. 自动检测训练
 
 默认安装后会自动扫描训练日志。
 
@@ -232,7 +282,7 @@ CSV 至少需要包含：
 
 如果指标值是 `0.82` 这种 0 到 1 的小数，会自动转成 `82.0` 显示。
 
-## 7. mmsegmentation 接入
+## 8. mmsegmentation 接入
 
 大多数情况下不需要改训练代码。
 
@@ -259,7 +309,7 @@ training-monitor watch-file /path/to/train.log 300
 
 最后的 `300` 是总 epoch，可以按你的训练轮数修改。
 
-## 8. YOLO / Ultralytics 接入
+## 9. YOLO / Ultralytics 接入
 
 YOLO 通常会生成：
 
@@ -283,7 +333,7 @@ training-monitor restart
 training-monitor watch-file /root/yolo-project/runs/detect/train/results.csv 100
 ```
 
-## 9. 通用 PyTorch 项目接入
+## 10. 通用 PyTorch 项目接入
 
 如果你的项目不是 mmsegmentation 或 YOLO，推荐主动上报指标。
 
@@ -373,7 +423,7 @@ monitor.log(
 - `eta_seconds`：预计剩余秒数，可选。
 - `status`：`training`、`finished` 或 `error`。
 
-## 10. 新训练会不会自动切换
+## 11. 新训练会不会自动切换
 
 会。
 
@@ -394,7 +444,7 @@ training-monitor config set LOG_ROOTS "/当前项目的训练输出目录"
 training-monitor restart
 ```
 
-## 11. 手机无法连接怎么办
+## 12. 手机无法连接怎么办
 
 先在服务器上确认服务是否正常：
 
@@ -413,7 +463,7 @@ training-monitor connection
 - 如果 App 报 `HTTP 401`，说明 token 填错了。
 - 如果 App 报连接失败，通常是 URL、端口或公网映射问题。
 
-## 12. 更新版本
+## 13. 更新版本
 
 在服务器上重新执行安装命令即可：
 
@@ -429,7 +479,7 @@ training-monitor restart
 
 安卓 App 下载最新 Release 里的 APK 覆盖安装即可。
 
-## 13. 卸载
+## 14. 卸载
 
 先停止服务：
 
@@ -457,7 +507,7 @@ rm -rf ~/.training-monitor
 rm -f ~/.local/bin/training-monitor
 ```
 
-## 14. 推荐使用方式
+## 15. 推荐使用方式
 
 最省心的方式：
 

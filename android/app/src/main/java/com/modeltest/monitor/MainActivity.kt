@@ -1,14 +1,11 @@
 package com.modeltest.monitor
 
 import android.content.Context
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -55,6 +52,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -131,6 +129,16 @@ data class TrainingStatus(
         history.forEach { names.addAll(it.metrics.keys) }
         return names.filter { it.isNotBlank() }.distinct()
     }
+
+    fun primaryMetric(): String? {
+        return when {
+            metricName in metrics -> metricName
+            metricName in bestMetrics -> metricName
+            metrics.isNotEmpty() -> metrics.keys.first()
+            bestMetrics.isNotEmpty() -> bestMetrics.keys.first()
+            else -> null
+        }
+    }
 }
 
 
@@ -188,7 +196,7 @@ private fun MonitorRoot() {
     var draftToken by rememberSaveable { mutableStateOf(savedToken) }
     var refreshSeconds by rememberSaveable { mutableStateOf(loadRefreshSeconds(context)) }
     var selectedMetricsText by rememberSaveable { mutableStateOf(loadSelectedMetricsText(context)) }
-    var status by remember { mutableStateOf(TrainingStatus()) }
+    var status by remember { mutableStateOf(loadCachedStatus(context) ?: TrainingStatus()) }
     var error by remember { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var testMessage by rememberSaveable { mutableStateOf("") }
@@ -201,7 +209,9 @@ private fun MonitorRoot() {
 
         isRefreshing = true
         try {
-            status = fetchStatus(client, url, token)
+            val raw = fetchStatusJson(client, url, token)
+            status = parseTrainingStatus(JSONObject(raw))
+            saveCachedStatus(context, raw)
             error = null
         } catch (exc: Exception) {
             error = exc.message ?: "连接失败"
@@ -241,7 +251,7 @@ private fun MonitorRoot() {
                         status = status,
                         visibleMetrics = visibleMetrics,
                         selectedMetrics = selectedMetrics,
-                        metricOptions = metricOptions,
+                        metricOptions = status.metricNames().ifEmpty { CommonMetrics },
                         onMetricToggle = { metric ->
                             selectedMetricsText = toggleMetric(selectedMetrics, metric)
                             saveSelectedMetricsText(context, selectedMetricsText)
@@ -275,7 +285,11 @@ private fun MonitorRoot() {
                         onTest = {
                             scope.launch {
                                 testMessage = "正在测试连接..."
-                                runCatching { fetchStatus(client, draftUrl.trim(), draftToken.trim()) }
+                                runCatching {
+                                    val raw = fetchStatusJson(client, draftUrl.trim(), draftToken.trim())
+                                    saveCachedStatus(context, raw)
+                                    parseTrainingStatus(JSONObject(raw))
+                                }
                                     .onSuccess {
                                         status = it
                                         error = null
@@ -320,8 +334,67 @@ private fun DashboardScreen(
             onRefresh = onRefresh,
         )
         ProgressHeroCard(status)
+        BestSummaryCard(status)
         MetricGrid(status, visibleMetrics)
         MiniChartCard(status, visibleMetrics)
+    }
+}
+
+
+@Composable
+private fun BestSummaryCard(status: TrainingStatus) {
+    val metric = status.primaryMetric()
+    val best = metric?.let { status.bestMetrics[it] }
+    val bestEpoch = metric?.let { status.bestEpochs[it] }
+    val current = metric?.let { status.metrics[it] }
+
+    ElevatedCard(
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF111827)),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1.2f)) {
+                Text(
+                    text = "Best ${metricDisplayName(metric ?: status.metricName)}",
+                    color = Color(0xFFCBD5E1),
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = formatMetric(best),
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Best Epoch", color = Color(0xFFCBD5E1), fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = bestEpoch?.let { "$it" } ?: "--",
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Current", color = Color(0xFFCBD5E1), fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = formatMetric(current),
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
@@ -456,16 +529,16 @@ private fun TrainingBuddy(status: String, progress: Float, modifier: Modifier = 
             ) {
                 Text(
                     text = when (status) {
-                        "training" -> "训练小助手正在盯曲线"
-                        "finished" -> "训练完成，可以收工"
-                        "error" -> "连接异常，先检查服务"
-                        else -> "等待新的训练任务"
+                        "training" -> "Training agent is watching metrics"
+                        "finished" -> "Training finished"
+                        "error" -> "Connection issue, check server"
+                        else -> "Waiting for training"
                     },
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF111827),
                 )
                 Text(
-                    text = "进度 ${(progress.coerceIn(0f, 1f) * 100).toInt()}%",
+                    text = "Progress ${(progress.coerceIn(0f, 1f) * 100).toInt()}%",
                     color = Color(0xFF6B7280),
                 )
                 LinearProgressIndicator(
@@ -536,7 +609,7 @@ private fun MetricCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "最好 ${formatMetric(best)}${bestEpoch?.let { " · 第 $it 轮" } ?: ""}",
+                text = "Best ${formatMetric(best)}${bestEpoch?.let { " @ epoch $it" } ?: ""}",
                 color = Color(0xFF6B7280),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -548,9 +621,9 @@ private fun MetricCard(
 
 @Composable
 private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>) {
-    val chartMetrics = visibleMetrics.filter { metric ->
-        status.history.count { it.metrics[metric] != null } >= 2
-    }
+        val chartMetrics = chartMetricsFor(status, visibleMetrics).filter { metric ->
+            status.history.count { it.metrics[metric] != null } >= 2
+        }
 
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
@@ -635,7 +708,7 @@ private fun ChartsScreen(
             }
         }
 
-        val chartMetrics = visibleMetrics.filter { metric ->
+        val chartMetrics = chartMetricsFor(status, visibleMetrics).filter { metric ->
             status.history.count { it.metrics[metric] != null } >= 2
         }
 
@@ -649,7 +722,11 @@ private fun ChartsScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("指标曲线", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = chartMetrics.firstOrNull()?.let { "${metricDisplayName(it)} Trend" } ?: "Metric Trend",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
+                )
                 if (chartMetrics.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -682,26 +759,58 @@ private fun MetricsChart(
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
-        val left = 36.dp.toPx()
-        val right = size.width - 12.dp.toPx()
-        val top = 12.dp.toPx()
-        val bottom = size.height - 28.dp.toPx()
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(107, 114, 128)
+            textSize = 10.dp.toPx()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+        val left = 52.dp.toPx()
+        val right = size.width - 16.dp.toPx()
+        val top = 14.dp.toPx()
+        val bottom = size.height - 34.dp.toPx()
         val minEpoch = history.minOfOrNull { it.epoch } ?: 0
         val maxEpoch = history.maxOfOrNull { it.epoch } ?: max(1, minEpoch + 1)
         val epochSpan = max(1, maxEpoch - minEpoch)
+        val allValues = metrics.flatMap { metric ->
+            history.mapNotNull { it.metrics[metric] }
+        }
+        if (allValues.isEmpty()) return@Canvas
+        val rawMinValue = allValues.minOrNull() ?: 0.0
+        val rawMaxValue = allValues.maxOrNull() ?: 1.0
+        val valuePadding = max(abs(rawMaxValue - rawMinValue) * 0.08, 0.000001)
+        val minValue = rawMinValue - valuePadding
+        val maxValue = rawMaxValue + valuePadding
+        val valueSpan = max(abs(maxValue - minValue), 0.000001)
 
         repeat(4) { index ->
             val y = top + (bottom - top) * index / 3f
+            val value = maxValue - (maxValue - minValue) * index / 3.0
             drawLine(
                 color = Color(0xFFE5E7EB),
                 start = Offset(left, y),
                 end = Offset(right, y),
                 strokeWidth = 1.dp.toPx(),
             )
+            drawContext.canvas.nativeCanvas.drawText(
+                compactNumber(value),
+                4.dp.toPx(),
+                y + 4.dp.toPx(),
+                textPaint,
+            )
         }
 
         drawLine(Color(0xFFD1D5DB), Offset(left, top), Offset(left, bottom), 1.dp.toPx())
         drawLine(Color(0xFFD1D5DB), Offset(left, bottom), Offset(right, bottom), 1.dp.toPx())
+        val midEpoch = minEpoch + epochSpan / 2
+        listOf(minEpoch, midEpoch, maxEpoch).distinct().forEach { epoch ->
+            val x = left + (right - left) * ((epoch - minEpoch).toFloat() / epochSpan.toFloat())
+            drawContext.canvas.nativeCanvas.drawText(
+                epoch.toString(),
+                x - 8.dp.toPx(),
+                size.height - 8.dp.toPx(),
+                textPaint,
+            )
+        }
 
         metrics.forEachIndexed { index, metric ->
             val points = history.mapNotNull { point ->
@@ -709,9 +818,6 @@ private fun MetricsChart(
             }
             if (points.size < 2) return@forEachIndexed
 
-            val minValue = points.minOf { it.second }
-            val maxValue = points.maxOf { it.second }
-            val valueSpan = max(abs(maxValue - minValue), 0.000001)
             val path = Path()
 
             points.forEachIndexed { pointIndex, (epoch, value) ->
@@ -734,6 +840,16 @@ private fun MetricsChart(
                     join = StrokeJoin.Round,
                 ),
             )
+            points.forEach { (epoch, value) ->
+                val x = left + (right - left) * ((epoch - minEpoch).toFloat() / epochSpan.toFloat())
+                val normalized = ((value - minValue) / valueSpan).toFloat().coerceIn(0f, 1f)
+                val y = bottom - (bottom - top) * normalized
+                drawCircle(
+                    color = ChartColors[index % ChartColors.size],
+                    radius = 3.dp.toPx(),
+                    center = Offset(x, y),
+                )
+            }
         }
     }
 }
@@ -982,7 +1098,7 @@ private fun BottomTabs(current: AppPage, onChange: (AppPage) -> Unit) {
 }
 
 
-private suspend fun fetchStatus(client: OkHttpClient, baseUrl: String, token: String): TrainingStatus {
+private suspend fun fetchStatusJson(client: OkHttpClient, baseUrl: String, token: String): String {
     return withContext(Dispatchers.IO) {
         val requestBuilder = Request.Builder()
             .url("${baseUrl.trim().trimEnd('/')}/api/status")
@@ -998,47 +1114,51 @@ private suspend fun fetchStatus(client: OkHttpClient, baseUrl: String, token: St
                 error("HTTP ${response.code}")
             }
 
-            val json = JSONObject(response.body?.string().orEmpty())
-            val metricName = json.optString("metric_name", "IoU")
-            val metrics = json.optJSONObject("metrics").toDoubleMap().toMutableMap()
-            val currentMetric = json.optNullableDouble("current_iou")
-            if (metrics.isEmpty() && currentMetric != null) {
-                metrics[metricName] = currentMetric
-            }
-
-            val bestMetrics = json.optJSONObject("best_metrics").toDoubleMap().toMutableMap()
-            val bestMetric = json.optNullableDouble("best_iou")
-            if (bestMetrics.isEmpty() && bestMetric != null) {
-                bestMetrics[metricName] = bestMetric
-            }
-
-            val bestEpochs = json.optJSONObject("best_epochs").toIntMap().toMutableMap()
-            val bestEpoch = json.optNullableInt("best_epoch")
-            if (bestEpochs.isEmpty() && bestEpoch != null) {
-                bestEpochs[metricName] = bestEpoch
-            }
-
-            val history = parseHistory(json.optJSONArray("history"))
-            val availableMetrics = mergeMetricOptions(
-                parseStringArray(json.optJSONArray("available_metrics")),
-                metrics.keys.toList() + bestMetrics.keys.toList() + history.flatMap { it.metrics.keys },
-            )
-
-            TrainingStatus(
-                status = json.optString("status", "idle"),
-                epoch = json.optInt("epoch", 0),
-                totalEpochs = json.optInt("total_epochs", 0),
-                metrics = metrics,
-                bestMetrics = bestMetrics,
-                bestEpochs = bestEpochs,
-                metricName = metricName,
-                etaSeconds = json.optNullableLong("eta_seconds"),
-                updatedAt = json.optString("updated_at", ""),
-                history = history,
-                availableMetrics = availableMetrics,
-            )
+            response.body?.string().orEmpty()
         }
     }
+}
+
+
+private fun parseTrainingStatus(json: JSONObject): TrainingStatus {
+    val metricName = json.optString("metric_name", "IoU")
+    val metrics = json.optJSONObject("metrics").toDoubleMap().toMutableMap()
+    val currentMetric = json.optNullableDouble("current_iou")
+    if (metrics.isEmpty() && currentMetric != null) {
+        metrics[metricName] = currentMetric
+    }
+
+    val bestMetrics = json.optJSONObject("best_metrics").toDoubleMap().toMutableMap()
+    val bestMetric = json.optNullableDouble("best_iou")
+    if (bestMetrics.isEmpty() && bestMetric != null) {
+        bestMetrics[metricName] = bestMetric
+    }
+
+    val bestEpochs = json.optJSONObject("best_epochs").toIntMap().toMutableMap()
+    val bestEpoch = json.optNullableInt("best_epoch")
+    if (bestEpochs.isEmpty() && bestEpoch != null) {
+        bestEpochs[metricName] = bestEpoch
+    }
+
+    val history = parseHistory(json.optJSONArray("history"))
+    val availableMetrics = mergeMetricOptions(
+        parseStringArray(json.optJSONArray("available_metrics")),
+        metrics.keys.toList() + bestMetrics.keys.toList() + history.flatMap { it.metrics.keys },
+    )
+
+    return TrainingStatus(
+        status = json.optString("status", "idle"),
+        epoch = json.optInt("epoch", 0),
+        totalEpochs = json.optInt("total_epochs", 0),
+        metrics = metrics,
+        bestMetrics = bestMetrics,
+        bestEpochs = bestEpochs,
+        metricName = metricName,
+        etaSeconds = json.optNullableLong("eta_seconds"),
+        updatedAt = json.optString("updated_at", ""),
+        history = history,
+        availableMetrics = availableMetrics,
+    )
 }
 
 
@@ -1127,6 +1247,14 @@ private fun chooseVisibleMetrics(status: TrainingStatus, selected: List<String>)
 }
 
 
+private fun chartMetricsFor(status: TrainingStatus, visibleMetrics: List<String>): List<String> {
+    val candidates = visibleMetrics.ifEmpty {
+        status.primaryMetric()?.let { listOf(it) } ?: emptyList()
+    }
+    return candidates.take(2)
+}
+
+
 private fun mergeMetricOptions(first: List<String>, second: List<String> = emptyList()): List<String> {
     return (first + second).filter { it.isNotBlank() }.distinct()
 }
@@ -1150,18 +1278,29 @@ private fun toggleMetric(selected: List<String>, metric: String): String {
 
 private fun metricDisplayName(name: String): String {
     return when (name.lowercase(Locale.US)) {
-        "loss" -> "损失 loss"
-        "box_loss" -> "框损失"
-        "cls_loss" -> "分类损失"
-        "dfl_loss" -> "DFL 损失"
+        "loss" -> "Loss"
+        "box_loss" -> "Box Loss"
+        "cls_loss" -> "Cls Loss"
+        "dfl_loss" -> "DFL Loss"
         "miou" -> "mIoU"
         "iou" -> "IoU"
         "map" -> "mAP"
         "map50" -> "mAP50"
-        "accuracy" -> "准确率"
-        "precision" -> "精确率"
-        "recall" -> "召回率"
+        "accuracy" -> "Accuracy"
+        "precision" -> "Precision"
+        "recall" -> "Recall"
         else -> name
+    }
+}
+
+
+private fun compactNumber(value: Double): String {
+    val absValue = abs(value)
+    return when {
+        absValue >= 100 -> String.format(Locale.US, "%.0f", value)
+        absValue >= 10 -> String.format(Locale.US, "%.1f", value)
+        absValue >= 1 -> String.format(Locale.US, "%.2f", value)
+        else -> String.format(Locale.US, "%.3f", value)
     }
 }
 
@@ -1238,6 +1377,24 @@ private fun saveToken(context: Context, token: String) {
         .getSharedPreferences("settings", Context.MODE_PRIVATE)
         .edit()
         .putString("token", token)
+        .apply()
+}
+
+
+private fun loadCachedStatus(context: Context): TrainingStatus? {
+    val raw = context
+        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+        .getString("cached_status_json", null)
+        ?: return null
+    return runCatching { parseTrainingStatus(JSONObject(raw)) }.getOrNull()
+}
+
+
+private fun saveCachedStatus(context: Context, raw: String) {
+    context
+        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+        .edit()
+        .putString("cached_status_json", raw)
         .apply()
 }
 
