@@ -122,7 +122,7 @@ private const val NotificationEnabledKey = "notification_enabled"
 private const val NotificationPermissionRequestCode = 3001
 private const val TrainingNotificationId = 4100
 private const val TrainingFinishedNotificationId = 4101
-private const val TrainingChannelId = "training_status"
+private const val TrainingChannelId = "training_status_lock_screen"
 private const val TrainingFinishedChannelId = "training_finished"
 
 
@@ -285,27 +285,6 @@ private val ChartColors = listOf(
     Color(0xFF0891B2),
 )
 
-private val CommonMetrics = listOf(
-    "loss",
-    "decode.loss_ce",
-    "aux.loss_ce",
-    "bbox_loss",
-    "box_loss",
-    "cls_loss",
-    "dfl_loss",
-    "mIoU",
-    "IoU",
-    "mDice",
-    "mAcc",
-    "aAcc",
-    "mAP",
-    "mAP50",
-    "accuracy",
-    "precision",
-    "recall",
-)
-
-
 @Composable
 fun TrainingMonitorApp() {
     MaterialTheme(colorScheme = AppColors) {
@@ -374,7 +353,7 @@ private fun MonitorRoot() {
 
     val selectedMetrics = parseMetricList(selectedMetricsText)
     val visibleMetrics = chooseVisibleMetrics(status, selectedMetrics)
-    val metricOptions = mergeMetricOptions(status.metricNames(), CommonMetrics)
+    val metricOptions = mergeMetricOptions(status.metricNames(), selectedMetrics)
     val currentPage = AppPage.valueOf(page)
 
     Surface(
@@ -398,13 +377,7 @@ private fun MonitorRoot() {
 
                     AppPage.Charts -> ChartsScreen(
                         status = status,
-                        visibleMetrics = visibleMetrics,
                         selectedMetrics = selectedMetrics,
-                        metricOptions = metricOptions,
-                        onMetricToggle = { metric ->
-                            selectedMetricsText = toggleMetric(selectedMetrics, metric)
-                            saveSelectedMetricsText(context, selectedMetricsText)
-                        },
                     )
 
                     AppPage.Settings -> SettingsScreen(
@@ -973,10 +946,7 @@ private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>) 
 @Composable
 private fun ChartsScreen(
     status: TrainingStatus,
-    visibleMetrics: List<String>,
     selectedMetrics: List<String>,
-    metricOptions: List<String>,
-    onMetricToggle: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -990,29 +960,12 @@ private fun ChartsScreen(
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
-        Text("选择你关心的指标，曲线会随训练实时刷新。", color = Color(0xFF6B7280))
+        Text("曲线只显示你在设置中勾选、并且服务器实际检测到的指标。", color = Color(0xFF6B7280))
 
-        SettingsCard(title = "指标选择") {
-            metricOptions.chunked(2).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { metric ->
-                        MetricChip(
-                            text = metricDisplayName(metric),
-                            selected = selectedMetrics.contains(metric) || (selectedMetrics.isEmpty() && visibleMetrics.contains(metric)),
-                            onClick = { onMetricToggle(metric) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (row.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-
-        val chartMetrics = chartMetricsFor(status, visibleMetrics).filter { metric ->
+        val chartMetrics = chooseChartMetrics(status, selectedMetrics).filter { metric ->
             status.history.count { it.metrics[metric] != null } >= 2
         }
+        val selectedAvailable = resolveSelectedMetrics(status, selectedMetrics)
 
         ElevatedCard(
             shape = RoundedCornerShape(10.dp),
@@ -1029,6 +982,12 @@ private fun ChartsScreen(
                     fontWeight = FontWeight.Bold,
                     style = MaterialTheme.typography.titleMedium,
                 )
+                if (selectedAvailable.isNotEmpty()) {
+                    Text(
+                        text = "当前指标：${selectedAvailable.joinToString(" / ") { metricDisplayName(it) }}",
+                        color = Color(0xFF6B7280),
+                    )
+                }
                 if (chartMetrics.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -1036,7 +995,15 @@ private fun ChartsScreen(
                             .height(260.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("至少需要两个 epoch 的数据才能画曲线", color = Color(0xFF6B7280))
+                        Text(
+                            if (selectedMetrics.isEmpty()) {
+                                "请先到设置中选择要显示的指标"
+                            } else {
+                                "当前选择的指标还没有足够历史数据"
+                            },
+                            color = Color(0xFF6B7280),
+                            textAlign = TextAlign.Center,
+                        )
                     }
                 } else {
                     MetricsChart(
@@ -1066,17 +1033,22 @@ private fun MetricsChart(
             textSize = 10.dp.toPx()
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         }
+        val pointsByMetric = metrics.associateWith { metric ->
+            history.mapNotNull { point ->
+                point.metrics[metric]?.let { point.epoch to it }
+            }
+        }
+        val allEpochs = pointsByMetric.values.flatten().map { it.first }
+        val allValues = pointsByMetric.values.flatten().map { it.second }
+        if (allValues.isEmpty()) return@Canvas
+
         val left = 52.dp.toPx()
         val right = size.width - 16.dp.toPx()
         val top = 14.dp.toPx()
         val bottom = size.height - 34.dp.toPx()
-        val minEpoch = history.minOfOrNull { it.epoch } ?: 0
-        val maxEpoch = history.maxOfOrNull { it.epoch } ?: max(1, minEpoch + 1)
+        val minEpoch = allEpochs.minOrNull() ?: 0
+        val maxEpoch = allEpochs.maxOrNull() ?: max(1, minEpoch + 1)
         val epochSpan = max(1, maxEpoch - minEpoch)
-        val allValues = metrics.flatMap { metric ->
-            history.mapNotNull { it.metrics[metric] }
-        }
-        if (allValues.isEmpty()) return@Canvas
         val rawMinValue = allValues.minOrNull() ?: 0.0
         val rawMaxValue = allValues.maxOrNull() ?: 1.0
         val valuePadding = max(abs(rawMaxValue - rawMinValue) * 0.08, 0.000001)
@@ -1115,9 +1087,7 @@ private fun MetricsChart(
         }
 
         metrics.forEachIndexed { index, metric ->
-            val points = history.mapNotNull { point ->
-                point.metrics[metric]?.let { point.epoch to it }
-            }
+            val points = pointsByMetric[metric].orEmpty()
             if (points.size < 2) return@forEachIndexed
 
             val path = Path()
@@ -1276,7 +1246,7 @@ private fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("通知栏训练状态", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "开启后会在通知栏和锁屏显示 epoch、Best 指标；训练完成时提醒。华为手表可通过手机通知同步查看。",
+                        "开启后会用前台进度通知显示 epoch、Best 指标和 ETA；训练完成时提醒。锁屏和荣耀灵动胶囊是否展示由系统通知设置决定。",
                         color = Color(0xFF6B7280),
                     )
                 }
@@ -1286,19 +1256,23 @@ private fun SettingsScreen(
                 )
             }
             Text(
-                "通知中显示的指标来自“首页指标”的前 1-2 个；不选择时会自动使用主要指标。",
+                "通知中显示的指标来自“显示指标”的前 1-2 个；不选择时会自动使用主要指标。",
                 color = Color(0xFF6B7280),
             )
         }
 
-        SettingsCard(title = "首页指标") {
-            Text("勾选后，总览和曲线页都会优先显示这些指标。", color = Color(0xFF6B7280))
-            metricOptions.forEach { metric ->
-                MetricOptionRow(
-                    metric = metric,
-                    checked = selectedMetrics.contains(metric),
-                    onToggle = { onMetricToggle(metric) },
-                )
+        SettingsCard(title = "显示指标") {
+            Text("这里只显示服务器已经检测到的指标；勾选后会出现在总览、曲线和通知中。", color = Color(0xFF6B7280))
+            if (metricOptions.isEmpty()) {
+                Text("还没有检测到指标。训练脚本同步数据后，这里会自动出现可选项。", color = Color(0xFF6B7280))
+            } else {
+                metricOptions.forEach { metric ->
+                    MetricOptionRow(
+                        metric = metric,
+                        checked = selectedMetrics.contains(metric),
+                        onToggle = { onMetricToggle(metric) },
+                    )
+                }
             }
         }
     }
@@ -1570,11 +1544,34 @@ private fun JSONObject.optNullableLong(name: String): Long? {
 
 private fun chooseVisibleMetrics(status: TrainingStatus, selected: List<String>): List<String> {
     val available = status.metricNames()
-    val chosen = selected.filter { it in available }
+    val chosen = resolveSelectedMetrics(status, selected)
     if (chosen.isNotEmpty()) return chosen.take(6)
 
     val defaults = listOf("loss", status.metricName, "mIoU", "IoU", "mAP", "accuracy")
     return (defaults + available).filter { it in available }.distinct().take(4)
+}
+
+
+private fun chooseChartMetrics(status: TrainingStatus, selected: List<String>): List<String> {
+    return resolveSelectedMetrics(status, selected).take(2)
+}
+
+
+private fun resolveSelectedMetrics(status: TrainingStatus, selected: List<String>): List<String> {
+    val available = status.metricNames()
+    return selected.mapNotNull { canonicalMetric(it, available) }.distinct()
+}
+
+
+private fun canonicalMetric(metric: String, available: List<String>): String? {
+    if (metric in available) return metric
+    val lowered = metric.lowercase(Locale.US)
+    return when {
+        lowered == "iou" -> available.firstOrNull { it.equals("mIoU", ignoreCase = true) }
+        lowered == "miou" -> available.firstOrNull { it.equals("IoU", ignoreCase = true) }
+        lowered == "map" -> available.firstOrNull { it.equals("mAP50", ignoreCase = true) }
+        else -> null
+    }
 }
 
 
@@ -1837,11 +1834,12 @@ private fun createNotificationChannels(context: Context) {
     notificationManager(context).createNotificationChannel(
         NotificationChannel(
             TrainingChannelId,
-            "训练状态",
-            NotificationManager.IMPORTANCE_LOW,
+            "训练状态与锁屏",
+            NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "训练进行中的常驻状态"
+            description = "训练进行中的常驻状态、锁屏进度和系统胶囊候选通知"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setShowBadge(true)
         },
     )
     notificationManager(context).createNotificationChannel(
@@ -1870,8 +1868,15 @@ private fun buildTrainingNotification(
         .setContentIntent(mainActivityPendingIntent(context))
         .setOngoing(status.status == "training")
         .setOnlyAlertOnce(true)
+        .setShowWhen(true)
+        .setWhen(System.currentTimeMillis())
+        .setPriority(Notification.PRIORITY_HIGH)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
-        .setCategory(Notification.CATEGORY_STATUS)
+        .setCategory(Notification.CATEGORY_PROGRESS)
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        notification.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
+    }
 
     if (status.totalEpochs > 0) {
         notification.setProgress(status.totalEpochs, status.epoch.coerceAtMost(status.totalEpochs), false)

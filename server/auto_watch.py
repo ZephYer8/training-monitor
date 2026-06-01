@@ -11,12 +11,12 @@ from watch_mmseg_log import (
     choose_primary_metric as choose_mmseg_primary_metric,
     infer_total_epochs,
     parse_eta_seconds,
-    parse_latest_metrics,
     parse_mmseg_line_metrics,
 )
 
 
 Metric = Tuple[str, int, float, Optional[int], Dict[str, float]]
+ParsedFile = Tuple[int, Optional[Metric], Optional[Metric], List[Metric]]
 
 
 def iter_files(roots: Iterable[str]) -> Iterable[Path]:
@@ -51,28 +51,48 @@ def latest_file(roots: List[str]) -> Optional[Path]:
     return max(candidates, key=lambda item: item[0])[1]
 
 
-def parse_file(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
+def parse_file(path: Path, total_epochs_fallback: int) -> ParsedFile:
+    total_epochs, rows = parse_history(path, total_epochs_fallback)
+    if not rows:
+        return total_epochs, None, None, []
+    return total_epochs, best_row(rows), rows[-1], rows
+
+
+def parse_history(path: Path, total_epochs_fallback: int) -> Tuple[int, List[Metric]]:
     if path.suffix == ".csv":
-        return parse_csv_metrics(path, total_epochs_fallback)
-    return parse_mmseg_log(path, total_epochs_fallback)
+        return parse_csv_history(path, total_epochs_fallback)
+    return parse_mmseg_history(path, total_epochs_fallback)
 
 
 def parse_mmseg_log(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
-    best: Optional[Metric] = None
-    latest_raw = parse_latest_metrics(path)
-    latest: Optional[Metric] = None
+    total_epochs, rows = parse_mmseg_history(path, total_epochs_fallback)
+    if not rows:
+        return total_epochs, None, None
+    return total_epochs, best_row(rows), rows[-1]
 
+
+def parse_mmseg_history(path: Path, total_epochs_fallback: int) -> Tuple[int, List[Metric]]:
+    by_epoch: Dict[int, Metric] = {}
     with path.open("r", encoding="utf-8", errors="ignore") as file:
         for line in file:
             parsed = parse_mmseg_line(line)
-            if parsed and "loss" not in parsed[0].lower() and (best is None or parsed[2] > best[2]):
-                best = parsed
+            if not parsed:
+                continue
+            _, epoch, _, eta_seconds, metrics = parsed
+            existing = by_epoch.get(epoch)
+            merged_metrics = dict(existing[4]) if existing else {}
+            merged_metrics.update(metrics)
+            primary_metric = choose_mmseg_primary_metric(merged_metrics)
+            by_epoch[epoch] = (
+                primary_metric,
+                epoch,
+                merged_metrics[primary_metric],
+                eta_seconds if eta_seconds is not None else existing[3] if existing else None,
+                merged_metrics,
+            )
 
-    if latest_raw is not None:
-        epoch, metrics, eta_seconds, primary_metric = latest_raw
-        latest = (primary_metric, epoch, metrics[primary_metric], eta_seconds, metrics)
-
-    return infer_total_epochs(path, total_epochs_fallback), best, latest
+    rows = [by_epoch[epoch] for epoch in sorted(by_epoch)]
+    return infer_total_epochs(path, total_epochs_fallback), rows
 
 
 def parse_mmseg_line(line: str) -> Optional[Metric]:
@@ -89,6 +109,13 @@ def parse_mmseg_line(line: str) -> Optional[Metric]:
 
 
 def parse_csv_metrics(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
+    total_epochs, rows = parse_csv_history(path, total_epochs_fallback)
+    if not rows:
+        return total_epochs, None, None
+    return total_epochs, best_row(rows), rows[-1]
+
+
+def parse_csv_history(path: Path, total_epochs_fallback: int) -> Tuple[int, List[Metric]]:
     rows = []
     with path.open("r", encoding="utf-8", errors="ignore", newline="") as file:
         reader = csv.DictReader(file)
@@ -102,15 +129,13 @@ def parse_csv_metrics(path: Path, total_epochs_fallback: int) -> Tuple[int, Opti
             rows.append((metric_name, epoch, metrics[metric_name], None, metrics))
 
     if not rows:
-        return total_epochs_fallback or 300, None, None
+        return total_epochs_fallback or 300, []
 
     if min(item[1] for item in rows) == 0:
         rows = [(name, epoch + 1, value, eta, metrics) for name, epoch, value, eta, metrics in rows]
 
     total_epochs = total_epochs_fallback if total_epochs_fallback > 0 else max(item[1] for item in rows)
-    best = best_row(rows)
-    latest = rows[-1]
-    return total_epochs, best, latest
+    return total_epochs, rows
 
 
 def pick_metrics(row: dict) -> Dict[str, float]:
@@ -174,10 +199,10 @@ def normalize_metric_value(name: str, value: float) -> float:
 
 
 def best_row(rows: List[Metric]) -> Metric:
-    primary_name = rows[-1][0]
-    if "loss" in primary_name.lower():
-        return min(rows, key=lambda item: item[2])
-    return max(rows, key=lambda item: item[2])
+    quality_rows = [item for item in rows if "loss" not in item[0].lower()]
+    if quality_rows:
+        return max(quality_rows, key=lambda item: item[2])
+    return min(rows, key=lambda item: item[2])
 
 
 def parse_int(value: Optional[str]) -> Optional[int]:
@@ -194,35 +219,23 @@ def parse_float(value: Optional[str]) -> Optional[float]:
         return None
 
 
-def send_snapshot(
+def send_history_snapshot(
     monitor: TrainingMonitor,
     run_id: str,
     total_epochs: int,
-    best: Optional[Metric],
-    latest: Metric,
+    rows: List[Metric],
 ) -> None:
-    if best is not None:
+    for row in rows[-500:]:
         monitor.log(
             run_id=run_id,
-            epoch=best[1],
+            epoch=row[1],
             total_epochs=total_epochs,
-            iou=best[2],
-            metric_name=best[0],
-            metrics=best[4],
-            eta_seconds=latest[3],
-            status="finished" if total_epochs > 0 and best[1] >= total_epochs else "training",
+            iou=row[2],
+            metric_name=row[0],
+            metrics=row[4],
+            eta_seconds=row[3],
+            status="finished" if total_epochs > 0 and row[1] >= total_epochs else "training",
         )
-
-    monitor.log(
-        run_id=run_id,
-        epoch=latest[1],
-        total_epochs=total_epochs,
-        iou=latest[2],
-        metric_name=latest[0],
-        metrics=latest[4],
-        eta_seconds=latest[3],
-        status="finished" if total_epochs > 0 and latest[1] >= total_epochs else "training",
-    )
 
 
 def main() -> None:
@@ -249,7 +262,7 @@ def main() -> None:
             time.sleep(args.interval)
             continue
 
-        total_epochs, best, latest = parse_file(path, args.total_epochs)
+        total_epochs, best, latest, rows = parse_file(path, args.total_epochs)
         if latest is None:
             print(f"waiting for metrics in {path}", flush=True)
             time.sleep(args.interval)
@@ -260,7 +273,7 @@ def main() -> None:
 
         if active_file != path:
             print(f"switch to training file: {path}", flush=True)
-            send_snapshot(monitor, run_id, total_epochs, best, latest)
+            send_history_snapshot(monitor, run_id, total_epochs, rows)
             active_file = path
             last_sent = current
         elif current != last_sent:

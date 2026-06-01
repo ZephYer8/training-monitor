@@ -284,25 +284,12 @@ watch_file() {
     stop_one "$WATCHER_PID" "old watcher"
 
     cd "$SERVER_DIR"
-    if [ "$LOG_TYPE" = "yolo" ] || [ "$(basename "$log_path")" = "results.csv" ]; then
-        nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch.py \
-            --server-url "http://127.0.0.1:$PORT" \
-            --total-epochs "$total_epochs" \
-            --interval 5 \
-            --roots "$log_path" \
-            > "$LOG_DIR/watcher.log" 2>&1 &
-    else
-        MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" sync_mmseg_snapshot.py \
-            --log-path "$log_path" \
-            --server-url "http://127.0.0.1:$PORT" \
-            --total-epochs "$total_epochs" || true
-        nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" watch_mmseg_log.py \
-            --log-path "$log_path" \
-            --server-url "http://127.0.0.1:$PORT" \
-            --total-epochs "$total_epochs" \
-            --interval 5 \
-            > "$LOG_DIR/watcher.log" 2>&1 &
-    fi
+    nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch.py \
+        --server-url "http://127.0.0.1:$PORT" \
+        --total-epochs "$total_epochs" \
+        --interval 5 \
+        --roots "$log_path" \
+        > "$LOG_DIR/watcher.log" 2>&1 &
     echo $! > "$WATCHER_PID"
     echo "watching: $log_path"
 }
