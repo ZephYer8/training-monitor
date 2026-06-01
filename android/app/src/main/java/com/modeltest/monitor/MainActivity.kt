@@ -17,6 +17,11 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -29,8 +34,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,7 +64,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -69,11 +78,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieComposition
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.CoroutineScope
@@ -283,8 +287,17 @@ private val ChartColors = listOf(
 
 private val CommonMetrics = listOf(
     "loss",
+    "decode.loss_ce",
+    "aux.loss_ce",
+    "bbox_loss",
+    "box_loss",
+    "cls_loss",
+    "dfl_loss",
     "mIoU",
     "IoU",
+    "mDice",
+    "mAcc",
+    "aAcc",
     "mAP",
     "mAP50",
     "accuracy",
@@ -368,7 +381,11 @@ private fun MonitorRoot() {
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+        ) {
             Box(modifier = Modifier.weight(1f)) {
                 when (currentPage) {
                     AppPage.Dashboard -> DashboardScreen(
@@ -383,7 +400,7 @@ private fun MonitorRoot() {
                         status = status,
                         visibleMetrics = visibleMetrics,
                         selectedMetrics = selectedMetrics,
-                        metricOptions = status.metricNames().ifEmpty { CommonMetrics },
+                        metricOptions = metricOptions,
                         onMetricToggle = { metric ->
                             selectedMetricsText = toggleMetric(selectedMetrics, metric)
                             saveSelectedMetricsText(context, selectedMetricsText)
@@ -466,8 +483,8 @@ private fun DashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Header(
             status = status,
@@ -633,11 +650,18 @@ private fun ProgressHeroCard(status: TrainingStatus) {
 
 @Composable
 private fun TrainingBuddy(status: String, progress: Float, modifier: Modifier = Modifier) {
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.training_buddy))
-    val animationProgress by animateLottieCompositionAsState(
-        composition = composition,
-        iterations = LottieConstants.IterateForever,
-        isPlaying = status == "training" || status == "idle",
+    val transition = rememberInfiniteTransition(label = "training_buddy")
+    val pulse by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
+        label = "buddy_pulse",
+    )
+    val loop by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Restart),
+        label = "buddy_loop",
     )
     val accent = when (status) {
         "training" -> Color(0xFF2563EB)
@@ -645,43 +669,56 @@ private fun TrainingBuddy(status: String, progress: Float, modifier: Modifier = 
         "error" -> Color(0xFFDC2626)
         else -> Color(0xFF6B7280)
     }
+    val title = when (status) {
+        "training" -> "训练助手正在巡航"
+        "finished" -> "训练完成，结果已记录"
+        "error" -> "连接异常，等待恢复"
+        else -> "等待新的训练任务"
+    }
+    val subtitle = when (status) {
+        "training" -> "Progress ${(progress.coerceIn(0f, 1f) * 100).toInt()}%"
+        "finished" -> "可以查看 Best 指标和曲线"
+        "error" -> "保留最后一次同步数据"
+        else -> "连接服务器后自动开始"
+    }
 
     ElevatedCard(
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF8FAFC)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF8FBFF)),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
         modifier = modifier,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            LottieAnimation(
-                composition = composition,
-                progress = { animationProgress },
+            BuddyCanvas(
+                status = status,
+                accent = accent,
+                pulse = pulse,
+                loop = loop,
                 modifier = Modifier
                     .weight(1f)
-                    .height(112.dp),
+                    .height(116.dp),
             )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = when (status) {
-                        "training" -> "Training agent is watching metrics"
-                        "finished" -> "Training finished"
-                        "error" -> "Connection issue, check server"
-                        else -> "Waiting for training"
-                    },
+                    text = title,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFF111827),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "Progress ${(progress.coerceIn(0f, 1f) * 100).toInt()}%",
+                    text = subtitle,
                     color = Color(0xFF6B7280),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 LinearProgressIndicator(
                     progress = { progress.coerceIn(0f, 1f) },
@@ -691,6 +728,128 @@ private fun TrainingBuddy(status: String, progress: Float, modifier: Modifier = 
                         .height(6.dp),
                 )
             }
+        }
+    }
+}
+
+
+@Composable
+private fun BuddyCanvas(
+    status: String,
+    accent: Color,
+    pulse: Float,
+    loop: Float,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val groundY = h * 0.82f
+        val bodyX = w * 0.28f
+        val bodyY = h * 0.58f + if (status == "training") (pulse - 0.5f) * 8.dp.toPx() else 0f
+        val skin = Color(0xFFFFD7A8)
+        val ink = Color(0xFF111827)
+        val muted = Color(0xFFE5E7EB)
+
+        drawRoundRect(
+            color = Color(0xFFEAF2FF),
+            topLeft = Offset(w * 0.47f, h * 0.22f),
+            size = Size(w * 0.42f, h * 0.42f),
+            cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx()),
+        )
+        drawRoundRect(
+            color = Color(0xFFBFD7FF),
+            topLeft = Offset(w * 0.47f, h * 0.22f),
+            size = Size(w * 0.42f, h * 0.42f),
+            cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx()),
+            style = Stroke(width = 1.5.dp.toPx()),
+        )
+        repeat(3) { index ->
+            val y = h * (0.32f + index * 0.1f)
+            drawLine(muted, Offset(w * 0.52f, y), Offset(w * 0.84f, y), 1.dp.toPx())
+        }
+        val chart = Path().apply {
+            moveTo(w * 0.53f, h * 0.55f)
+            lineTo(w * 0.61f, h * 0.45f)
+            lineTo(w * 0.69f, h * 0.49f)
+            lineTo(w * 0.78f, h * 0.33f)
+        }
+        drawPath(
+            path = chart,
+            color = if (status == "error") Color(0xFFEF4444) else Color(0xFF2563EB),
+            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+        if (status == "training") {
+            val dotX = w * (0.53f + 0.25f * loop)
+            val dotY = h * (0.55f - 0.2f * loop + 0.04f * pulse)
+            drawCircle(Color(0xFFF59E0B), 5.dp.toPx(), Offset(dotX, dotY))
+        }
+
+        drawRoundRect(
+            color = Color(0x33000000),
+            topLeft = Offset(bodyX - 36.dp.toPx(), groundY),
+            size = Size(72.dp.toPx(), 10.dp.toPx()),
+            cornerRadius = CornerRadius(50f, 50f),
+        )
+
+        val armLift = when (status) {
+            "finished" -> -32.dp.toPx()
+            "training" -> -8.dp.toPx() - pulse * 12.dp.toPx()
+            "error" -> 10.dp.toPx()
+            else -> 4.dp.toPx()
+        }
+        val legStep = if (status == "training") (loop - 0.5f) * 18.dp.toPx() else 0f
+
+        drawLine(accent, Offset(bodyX - 16.dp.toPx(), bodyY + 18.dp.toPx()), Offset(bodyX - 36.dp.toPx(), bodyY + armLift), 8.dp.toPx(), StrokeCap.Round)
+        drawLine(accent, Offset(bodyX + 16.dp.toPx(), bodyY + 18.dp.toPx()), Offset(bodyX + 36.dp.toPx(), bodyY + armLift * 0.7f), 8.dp.toPx(), StrokeCap.Round)
+        drawLine(ink, Offset(bodyX - 12.dp.toPx(), bodyY + 56.dp.toPx()), Offset(bodyX - 22.dp.toPx() - legStep, groundY), 7.dp.toPx(), StrokeCap.Round)
+        drawLine(ink, Offset(bodyX + 12.dp.toPx(), bodyY + 56.dp.toPx()), Offset(bodyX + 22.dp.toPx() + legStep, groundY), 7.dp.toPx(), StrokeCap.Round)
+        drawRoundRect(
+            color = accent,
+            topLeft = Offset(bodyX - 28.dp.toPx(), bodyY + 8.dp.toPx()),
+            size = Size(56.dp.toPx(), 58.dp.toPx()),
+            cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
+        )
+        drawCircle(skin, 24.dp.toPx(), Offset(bodyX, bodyY - 18.dp.toPx()))
+        drawRoundRect(
+            color = ink,
+            topLeft = Offset(bodyX - 22.dp.toPx(), bodyY - 45.dp.toPx()),
+            size = Size(44.dp.toPx(), 14.dp.toPx()),
+            cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
+        )
+        drawCircle(ink, 2.8.dp.toPx(), Offset(bodyX - 8.dp.toPx(), bodyY - 18.dp.toPx()))
+        drawCircle(ink, 2.8.dp.toPx(), Offset(bodyX + 9.dp.toPx(), bodyY - 18.dp.toPx()))
+
+        val mouth = Path().apply {
+            moveTo(bodyX - 9.dp.toPx(), bodyY - 6.dp.toPx())
+            if (status == "error") {
+                lineTo(bodyX + 9.dp.toPx(), bodyY - 6.dp.toPx())
+            } else {
+                quadraticBezierTo(bodyX, bodyY + 3.dp.toPx(), bodyX + 10.dp.toPx(), bodyY - 6.dp.toPx())
+            }
+        }
+        drawPath(mouth, ink, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
+
+        if (status == "finished") {
+            listOf(
+                Offset(w * 0.16f, h * 0.14f),
+                Offset(w * 0.38f, h * 0.16f),
+                Offset(w * 0.43f, h * 0.34f),
+            ).forEachIndexed { index, offset ->
+                drawCircle(ChartColors[(index + 1) % ChartColors.size], (4 + index).dp.toPx(), offset)
+            }
+        }
+        if (status == "error") {
+            val warning = Path().apply {
+                moveTo(w * 0.84f, h * 0.22f)
+                lineTo(w * 0.92f, h * 0.42f)
+                lineTo(w * 0.76f, h * 0.42f)
+                close()
+            }
+            drawPath(warning, Color(0xFFFFEDD5))
+            drawPath(warning, Color(0xFFF97316), style = Stroke(width = 2.dp.toPx()))
+            drawLine(Color(0xFFF97316), Offset(w * 0.84f, h * 0.29f), Offset(w * 0.84f, h * 0.36f), 2.dp.toPx())
+            drawCircle(Color(0xFFF97316), 2.dp.toPx(), Offset(w * 0.84f, h * 0.39f))
         }
     }
 }
@@ -712,11 +871,12 @@ private fun MetricGrid(status: TrainingStatus, visibleMetrics: List<String>) {
                         current = status.metrics[metric],
                         best = status.bestMetrics[metric],
                         bestEpoch = status.bestEpochs[metric],
-                        modifier = Modifier.weight(1f),
+                        modifier = if (rowMetrics.size == 1) {
+                            Modifier.fillMaxWidth()
+                        } else {
+                            Modifier.weight(1f)
+                        },
                     )
-                }
-                if (rowMetrics.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
@@ -1252,6 +1412,7 @@ private fun BottomTabs(current: AppPage, onChange: (AppPage) -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -1449,11 +1610,18 @@ private fun toggleMetric(selected: List<String>, metric: String): String {
 private fun metricDisplayName(name: String): String {
     return when (name.lowercase(Locale.US)) {
         "loss" -> "Loss"
+        "decode.loss_ce" -> "Decode Loss"
+        "aux.loss_ce" -> "Aux Loss"
+        "bbox_loss" -> "BBox Loss"
         "box_loss" -> "Box Loss"
         "cls_loss" -> "Cls Loss"
         "dfl_loss" -> "DFL Loss"
         "miou" -> "mIoU"
         "iou" -> "IoU"
+        "mdice" -> "mDice"
+        "macc" -> "mAcc"
+        "aacc" -> "aAcc"
+        "mfscore" -> "mFscore"
         "map" -> "mAP"
         "map50" -> "mAP50"
         "accuracy" -> "Accuracy"

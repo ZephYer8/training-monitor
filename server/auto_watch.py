@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from training_monitor import TrainingMonitor
-from watch_mmseg_log import infer_total_epochs, parse_eta_seconds, parse_latest_metrics
+from watch_mmseg_log import (
+    choose_primary_metric as choose_mmseg_primary_metric,
+    infer_total_epochs,
+    parse_eta_seconds,
+    parse_latest_metrics,
+    parse_mmseg_line_metrics,
+)
 
 
 Metric = Tuple[str, int, float, Optional[int], Dict[str, float]]
@@ -59,7 +65,7 @@ def parse_mmseg_log(path: Path, total_epochs_fallback: int) -> Tuple[int, Option
     with path.open("r", encoding="utf-8", errors="ignore") as file:
         for line in file:
             parsed = parse_mmseg_line(line)
-            if parsed and (best is None or parsed[2] > best[2]):
+            if parsed and "loss" not in parsed[0].lower() and (best is None or parsed[2] > best[2]):
                 best = parsed
 
     if latest_raw is not None:
@@ -70,13 +76,16 @@ def parse_mmseg_log(path: Path, total_epochs_fallback: int) -> Tuple[int, Option
 
 
 def parse_mmseg_line(line: str) -> Optional[Metric]:
-    match = re.search(r"Epoch\(val\) \[(\d+)\]\[\s*\d+/\d+\].*mIoU: ([0-9.]+)", line)
+    match = re.search(r"Epoch\((?:val|train)\) \[(\d+)\]\[\s*\d+/\d+\]", line)
     if not match:
         return None
     eta_match = re.search(r"eta: ([0-9:]+)", line)
     eta_seconds = parse_eta_seconds(eta_match.group(1)) if eta_match else None
-    value = float(match.group(2))
-    return "mIoU", int(match.group(1)), value, eta_seconds, {"mIoU": value}
+    metrics = parse_mmseg_line_metrics(line)
+    if not metrics:
+        return None
+    primary_metric = choose_mmseg_primary_metric(metrics)
+    return primary_metric, int(match.group(1)), metrics[primary_metric], eta_seconds, metrics
 
 
 def parse_csv_metrics(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
@@ -201,6 +210,7 @@ def send_snapshot(
             metric_name=best[0],
             metrics=best[4],
             eta_seconds=latest[3],
+            status="finished" if total_epochs > 0 and best[1] >= total_epochs else "training",
         )
 
     monitor.log(
@@ -211,6 +221,7 @@ def send_snapshot(
         metric_name=latest[0],
         metrics=latest[4],
         eta_seconds=latest[3],
+        status="finished" if total_epochs > 0 and latest[1] >= total_epochs else "training",
     )
 
 
@@ -223,7 +234,7 @@ def main() -> None:
     parser.add_argument(
         "--roots",
         nargs="*",
-        default=["/root/mmsegmentation*", "/root/autodl-tmp", "/root/workspace", "/root/runs", "/root"],
+        default=["/root/mmsegmentation*", "/root/autodl-tmp", "/root/workspace", "/root/runs"],
     )
     args = parser.parse_args()
 
@@ -261,6 +272,7 @@ def main() -> None:
                 metric_name=latest[0],
                 metrics=latest[4],
                 eta_seconds=latest[3],
+                status="finished" if total_epochs > 0 and latest[1] >= total_epochs else "training",
             )
             print(
                 f"sent epoch={latest[1]}/{total_epochs}, metric={latest[2]:.4f}, file={path}",

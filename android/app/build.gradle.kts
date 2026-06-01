@@ -12,8 +12,8 @@ android {
         applicationId = "com.modeltest.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.6.0"
+        versionCode = 8
+        versionName = "0.6.1"
     }
 
     buildFeatures {
@@ -36,7 +36,6 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("com.airbnb.android:lottie-compose:6.7.1")
     implementation("androidx.security:security-crypto:1.1.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")

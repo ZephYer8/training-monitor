@@ -242,8 +242,9 @@ App 会显示：
 - 指标曲线，带横坐标 epoch 和纵坐标数值
 - 通知栏和锁屏训练状态，可显示 epoch、Best 指标和 ETA
 - 训练完成提醒
+- 动态训练助手：训练中、完成、异常、等待会显示不同动作
 
-指标名称在 App 中优先使用英文，例如 `Loss`、`mIoU`、`mAP`、`Accuracy`，这样更接近训练面板和论文实验记录的习惯。
+指标名称在 App 中优先使用英文，例如 `Loss`、`Decode Loss`、`mIoU`、`mDice`、`mAP`、`Accuracy`，这样更接近训练面板和论文实验记录的习惯。
 
 ### 5.3 通知栏、锁屏和手表提醒
 
@@ -303,7 +304,7 @@ training-monitor status
 
 当前支持：
 
-- `.log`：主要用于 `mmsegmentation`，读取 `mIoU`
+- `.log`：主要用于 `mmsegmentation`，读取 `mIoU`、`mDice`、`mAcc`、`aAcc`、`loss` 等常见指标
 - `results.csv`：主要用于 YOLO / Ultralytics，读取 `mAP`
 - 文件名包含 `result` / `metric` / `progress` 的 `.csv`
 
