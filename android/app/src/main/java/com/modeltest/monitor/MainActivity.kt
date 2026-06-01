@@ -1,10 +1,20 @@
 package com.modeltest.monitor
 
+import android.Manifest
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -66,7 +76,11 @@ import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,9 +97,16 @@ import kotlin.math.max
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestTrainingNotificationPermission()
         setContent {
             TrainingMonitorApp()
         }
+    }
+
+    private fun requestTrainingNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NotificationPermissionRequestCode)
     }
 }
 
@@ -93,6 +114,100 @@ class MainActivity : ComponentActivity() {
 private const val SettingsPrefs = "settings"
 private const val SecureSettingsPrefs = "secure_settings"
 private const val TokenKey = "token"
+private const val NotificationEnabledKey = "notification_enabled"
+private const val NotificationPermissionRequestCode = 3001
+private const val TrainingNotificationId = 4100
+private const val TrainingFinishedNotificationId = 4101
+private const val TrainingChannelId = "training_status"
+private const val TrainingFinishedChannelId = "training_finished"
+
+
+class TrainingNotificationService : Service() {
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(4, TimeUnit.SECONDS)
+        .readTimeout(4, TimeUnit.SECONDS)
+        .build()
+    private var loopJob: Job? = null
+    private var lastStatus: String? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannels(this)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!hasNotificationPermission(this)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        val cached = loadCachedStatus(this) ?: TrainingStatus()
+        startForeground(
+            TrainingNotificationId,
+            buildTrainingNotification(
+                context = this,
+                status = cached,
+                content = notificationSummary(this, cached),
+            ),
+        )
+        loopJob?.cancel()
+        loopJob = serviceScope.launch { pollTrainingStatus() }
+        return START_STICKY
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        loopJob?.cancel()
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
+    private suspend fun pollTrainingStatus() {
+        while (true) {
+            val delaySeconds = loadRefreshSeconds(this@TrainingNotificationService).coerceIn(2, 60)
+            val url = loadBaseUrl(this@TrainingNotificationService)
+            val token = loadToken(this@TrainingNotificationService)
+
+            try {
+                val status = if (url.isBlank()) {
+                    loadCachedStatus(this@TrainingNotificationService) ?: TrainingStatus()
+                } else {
+                    val raw = fetchStatusJson(client, url, token)
+                    saveCachedStatus(this@TrainingNotificationService, raw)
+                    parseTrainingStatus(JSONObject(raw))
+                }
+
+                updateTrainingNotification(status, notificationSummary(this@TrainingNotificationService, status))
+                if (status.status == "finished" && lastStatus != "finished") {
+                    showTrainingFinishedNotification(status)
+                }
+                lastStatus = status.status
+            } catch (exc: Exception) {
+                val cached = loadCachedStatus(this@TrainingNotificationService) ?: TrainingStatus(status = "error")
+                updateTrainingNotification(cached, "连接失败，显示最后一次同步数据")
+                lastStatus = "error"
+            }
+
+            delay(delaySeconds * 1_000L)
+        }
+    }
+
+    private fun updateTrainingNotification(status: TrainingStatus, content: String) {
+        notificationManager(this).notify(
+            TrainingNotificationId,
+            buildTrainingNotification(this, status, content),
+        )
+    }
+
+    private fun showTrainingFinishedNotification(status: TrainingStatus) {
+        notificationManager(this).notify(
+            TrainingFinishedNotificationId,
+            buildFinishedNotification(this, status),
+        )
+    }
+}
 
 
 private enum class AppPage(val title: String) {
@@ -204,6 +319,7 @@ private fun MonitorRoot() {
     var draftToken by rememberSaveable { mutableStateOf(savedToken) }
     var refreshSeconds by rememberSaveable { mutableStateOf(loadRefreshSeconds(context)) }
     var selectedMetricsText by rememberSaveable { mutableStateOf(loadSelectedMetricsText(context)) }
+    var notificationEnabled by rememberSaveable { mutableStateOf(loadNotificationEnabled(context)) }
     var status by remember { mutableStateOf(loadCachedStatus(context) ?: TrainingStatus()) }
     var error by remember { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -232,6 +348,14 @@ private fun MonitorRoot() {
         while (true) {
             refreshOnce()
             delay(refreshSeconds * 1_000L)
+        }
+    }
+
+    LaunchedEffect(notificationEnabled, savedUrl, savedToken, selectedMetricsText, refreshSeconds) {
+        if (notificationEnabled) {
+            startTrainingNotificationService(context)
+        } else {
+            stopTrainingNotificationService(context)
         }
     }
 
@@ -272,6 +396,7 @@ private fun MonitorRoot() {
                         refreshSeconds = refreshSeconds,
                         metricOptions = metricOptions,
                         selectedMetrics = selectedMetrics,
+                        notificationEnabled = notificationEnabled,
                         testMessage = testMessage,
                         onUrlChange = { draftUrl = it },
                         onTokenChange = { draftToken = it },
@@ -282,6 +407,15 @@ private fun MonitorRoot() {
                         onMetricToggle = { metric ->
                             selectedMetricsText = toggleMetric(selectedMetrics, metric)
                             saveSelectedMetricsText(context, selectedMetricsText)
+                        },
+                        onNotificationEnabledChange = {
+                            notificationEnabled = it
+                            saveNotificationEnabled(context, it)
+                            if (it) {
+                                startTrainingNotificationService(context)
+                            } else {
+                                stopTrainingNotificationService(context)
+                            }
                         },
                         onSave = {
                             savedUrl = draftUrl.trim()
@@ -905,11 +1039,13 @@ private fun SettingsScreen(
     refreshSeconds: Int,
     metricOptions: List<String>,
     selectedMetrics: List<String>,
+    notificationEnabled: Boolean,
     testMessage: String,
     onUrlChange: (String) -> Unit,
     onTokenChange: (String) -> Unit,
     onRefreshSecondsChange: (Int) -> Unit,
     onMetricToggle: (String) -> Unit,
+    onNotificationEnabledChange: (Boolean) -> Unit,
     onSave: () -> Unit,
     onTest: () -> Unit,
 ) {
@@ -967,6 +1103,32 @@ private fun SettingsScreen(
                     )
                 }
             }
+        }
+
+        SettingsCard(title = "通知提醒") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNotificationEnabledChange(!notificationEnabled) },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("通知栏训练状态", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "开启后会在通知栏和锁屏显示 epoch、Best 指标；训练完成时提醒。华为手表可通过手机通知同步查看。",
+                        color = Color(0xFF6B7280),
+                    )
+                }
+                Checkbox(
+                    checked = notificationEnabled,
+                    onCheckedChange = onNotificationEnabledChange,
+                )
+            }
+            Text(
+                "通知中显示的指标来自“首页指标”的前 1-2 个；不选择时会自动使用主要指标。",
+                color = Color(0xFF6B7280),
+            )
         }
 
         SettingsCard(title = "首页指标") {
@@ -1443,6 +1605,19 @@ private fun saveSelectedMetricsText(context: Context, value: String) {
 }
 
 
+private fun loadNotificationEnabled(context: Context): Boolean {
+    return settingsPreferences(context).getBoolean(NotificationEnabledKey, false)
+}
+
+
+private fun saveNotificationEnabled(context: Context, enabled: Boolean) {
+    settingsPreferences(context)
+        .edit()
+        .putBoolean(NotificationEnabledKey, enabled)
+        .apply()
+}
+
+
 private fun settingsPreferences(context: Context): SharedPreferences {
     return context.getSharedPreferences(SettingsPrefs, Context.MODE_PRIVATE)
 }
@@ -1464,4 +1639,155 @@ private fun secureSettingsPreferences(context: Context): SharedPreferences {
     }.getOrElse {
         settingsPreferences(context)
     }
+}
+
+
+private fun startTrainingNotificationService(context: Context) {
+    if (!hasNotificationPermission(context)) return
+    val intent = Intent(context, TrainingNotificationService::class.java)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent)
+    } else {
+        context.startService(intent)
+    }
+}
+
+
+private fun stopTrainingNotificationService(context: Context) {
+    context.stopService(Intent(context, TrainingNotificationService::class.java))
+}
+
+
+private fun hasNotificationPermission(context: Context): Boolean {
+    return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+}
+
+
+private fun createNotificationChannels(context: Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+    notificationManager(context).createNotificationChannel(
+        NotificationChannel(
+            TrainingChannelId,
+            "训练状态",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "训练进行中的常驻状态"
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        },
+    )
+    notificationManager(context).createNotificationChannel(
+        NotificationChannel(
+            TrainingFinishedChannelId,
+            "训练完成提醒",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "模型训练完成时提醒"
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+        },
+    )
+}
+
+
+private fun buildTrainingNotification(
+    context: Context,
+    status: TrainingStatus,
+    content: String,
+): Notification {
+    val notification = Notification.Builder(context, TrainingChannelId)
+        .setSmallIcon(android.R.drawable.stat_notify_sync)
+        .setContentTitle(notificationTitle(status))
+        .setContentText(content)
+        .setStyle(Notification.BigTextStyle().bigText(content))
+        .setContentIntent(mainActivityPendingIntent(context))
+        .setOngoing(status.status == "training")
+        .setOnlyAlertOnce(true)
+        .setVisibility(Notification.VISIBILITY_PUBLIC)
+        .setCategory(Notification.CATEGORY_STATUS)
+
+    if (status.totalEpochs > 0) {
+        notification.setProgress(status.totalEpochs, status.epoch.coerceAtMost(status.totalEpochs), false)
+    } else {
+        notification.setProgress(0, 0, true)
+    }
+
+    return notification.build()
+}
+
+
+private fun buildFinishedNotification(context: Context, status: TrainingStatus): Notification {
+    val content = notificationSummary(context, status)
+    return Notification.Builder(context, TrainingFinishedChannelId)
+        .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+        .setContentTitle("训练完成")
+        .setContentText(content)
+        .setStyle(Notification.BigTextStyle().bigText(content))
+        .setContentIntent(mainActivityPendingIntent(context))
+        .setAutoCancel(true)
+        .setVisibility(Notification.VISIBILITY_PUBLIC)
+        .setCategory(Notification.CATEGORY_STATUS)
+        .build()
+}
+
+
+private fun mainActivityPendingIntent(context: Context): PendingIntent {
+    val intent = Intent(context, MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+    }
+    return PendingIntent.getActivity(
+        context,
+        0,
+        intent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+}
+
+
+private fun notificationManager(context: Context): NotificationManager {
+    return context.getSystemService(NotificationManager::class.java)
+}
+
+
+private fun notificationTitle(status: TrainingStatus): String {
+    val epochText = if (status.totalEpochs > 0) {
+        "${status.epoch}/${status.totalEpochs}"
+    } else {
+        status.epoch.takeIf { it > 0 }?.toString() ?: "--"
+    }
+    return when (status.status) {
+        "training" -> "训练中 · Epoch $epochText"
+        "finished" -> "训练完成 · Epoch $epochText"
+        "error" -> "训练异常 · Epoch $epochText"
+        else -> "等待训练数据"
+    }
+}
+
+
+private fun notificationSummary(context: Context, status: TrainingStatus): String {
+    val metrics = notificationMetrics(context, status)
+    val metricText = metrics.joinToString(" · ") { metric ->
+        val best = status.bestMetrics[metric]
+        val bestEpoch = status.bestEpochs[metric]
+        if (best != null) {
+            "Best ${metricDisplayName(metric)} ${formatMetric(best)}${bestEpoch?.let { " @ $it" } ?: ""}"
+        } else {
+            "${metricDisplayName(metric)} ${formatMetric(status.metrics[metric])}"
+        }
+    }
+    val etaText = status.etaSeconds?.let { " · ETA ${formatEta(it)}" } ?: ""
+    val summary = listOfNotNull(
+        if (status.totalEpochs > 0) "Epoch ${status.epoch}/${status.totalEpochs}" else null,
+        metricText.ifBlank { null },
+    ).joinToString(" · ") + etaText
+    return summary.ifBlank { "等待训练数据" }
+}
+
+
+private fun notificationMetrics(context: Context, status: TrainingStatus): List<String> {
+    val selected = parseMetricList(loadSelectedMetricsText(context))
+    val visible = chooseVisibleMetrics(status, selected)
+    val metrics = visible.ifEmpty {
+        status.primaryMetric()?.let { listOf(it) } ?: emptyList()
+    }
+    return metrics.take(2)
 }
