@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 if [ -z "${TRAINING_MONITOR_HOME:-}" ]; then
     if [ "$(id -u)" = "0" ] && [ -d "/root/autodl-tmp" ]; then
@@ -21,6 +22,7 @@ BACKEND_PID="$BASE/backend.pid"
 WATCHER_PID="$BASE/watcher.pid"
 
 mkdir -p "$LOG_DIR"
+chmod 700 "$BASE" "$LOG_DIR" 2>/dev/null || true
 
 die() {
     echo "$1" >&2
@@ -32,24 +34,32 @@ write_default_config() {
     cat > "$CONFIG_FILE" <<EOF
 PORT=6006
 PUBLIC_URL=
-LOG_ROOTS=/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root
+LOG_ROOTS=/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs
 LOG_TYPE=auto
 AUTO_WATCH=1
 TOTAL_EPOCHS=0
 SCAN_INTERVAL=10
+CORS_ORIGINS=
 EOF
+    chmod 600 "$CONFIG_FILE" 2>/dev/null || true
 }
 
 load_config() {
     write_default_config
 
+    local old_log_roots="/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root"
+    if [ "$(read_config_value LOG_ROOTS "")" = "$old_log_roots" ]; then
+        save_config_value LOG_ROOTS "/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs"
+    fi
+
     PORT="${TRAINING_MONITOR_PORT:-$(read_config_value PORT 6006)}"
     PUBLIC_URL="$(read_config_value PUBLIC_URL "")"
-    LOG_ROOTS="$(read_config_value LOG_ROOTS "/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root")"
+    LOG_ROOTS="$(read_config_value LOG_ROOTS "/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs")"
     LOG_TYPE="$(read_config_value LOG_TYPE auto)"
     AUTO_WATCH="$(read_config_value AUTO_WATCH 1)"
     TOTAL_EPOCHS="$(read_config_value TOTAL_EPOCHS 0)"
     SCAN_INTERVAL="$(read_config_value SCAN_INTERVAL 10)"
+    CORS_ORIGINS="$(read_config_value CORS_ORIGINS "")"
 }
 
 read_config_value() {
@@ -76,6 +86,7 @@ save_config_value() {
         END { if (!done) print key "=" value }
     ' "$CONFIG_FILE" > "$tmp"
     mv "$tmp" "$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE" 2>/dev/null || true
 }
 
 detect_public_url() {
@@ -117,8 +128,20 @@ token_init() {
 import secrets
 print(secrets.token_urlsafe(24))
 PY
-        chmod 600 "$TOKEN_FILE"
     fi
+    chmod 600 "$TOKEN_FILE"
+}
+
+rotate_token() {
+    ensure_runtime
+    "$VENV_PY" - <<'PY' > "$TOKEN_FILE"
+import secrets
+print(secrets.token_urlsafe(24))
+PY
+    chmod 600 "$TOKEN_FILE"
+    echo "token rotated"
+    restart
+    connection
 }
 
 start() {
@@ -133,6 +156,7 @@ start() {
         nohup env \
             MONITOR_TOKEN="$(cat "$TOKEN_FILE")" \
             TRAINING_MONITOR_STATE_FILE="$STATE_FILE" \
+            TRAINING_MONITOR_CORS_ORIGINS="$CORS_ORIGINS" \
             "$VENV_PY" -m uvicorn app:app --host 0.0.0.0 --port "$PORT" \
             > "$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$BACKEND_PID"
@@ -219,6 +243,9 @@ setup() {
 
     read -r -p "Auto watch 1/0 [$AUTO_WATCH]: " input_watch
     [ -n "$input_watch" ] && save_config_value AUTO_WATCH "$input_watch"
+
+    read -r -p "CORS origins, usually empty [$CORS_ORIGINS]: " input_cors
+    [ -n "$input_cors" ] && save_config_value CORS_ORIGINS "$input_cors"
 
     echo "saved: $CONFIG_FILE"
     connection
@@ -317,6 +344,7 @@ case "${1:-help}" in
     restart) restart ;;
     status) status ;;
     token) token_init; cat "$TOKEN_FILE"; echo ;;
+    rotate-token) rotate_token ;;
     connection) connection ;;
     setup) setup ;;
     config) shift; config_cmd "$@" ;;
@@ -326,6 +354,6 @@ case "${1:-help}" in
     auto-mmseg) auto_watch ;;
     logs) logs ;;
     help|*)
-        echo "usage: training-monitor start|stop|restart|status|token|connection|setup|config|watch-file|auto-watch|logs"
+        echo "usage: training-monitor start|stop|restart|status|token|rotate-token|connection|setup|config|watch-file|auto-watch|logs"
         ;;
 esac

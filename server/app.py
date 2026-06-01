@@ -1,4 +1,5 @@
 from datetime import datetime
+import hmac
 import os
 from pathlib import Path
 from typing import Dict, Literal, Optional
@@ -11,6 +12,11 @@ from pydantic import BaseModel, Field
 
 DATA_FILE = Path(os.getenv("TRAINING_MONITOR_STATE_FILE", Path(__file__).with_name("state.json")))
 MONITOR_TOKEN = os.getenv("MONITOR_TOKEN", "")
+CORS_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("TRAINING_MONITOR_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 
 class TrainingUpdate(BaseModel):
@@ -71,14 +77,21 @@ def normalize_state(loaded: dict) -> dict:
 
 
 def save_state(state: dict) -> None:
+    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     DATA_FILE.write_text(
         json.dumps(state, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    try:
+        os.chmod(DATA_FILE, 0o600)
+    except OSError:
+        pass
 
 
 def require_token(x_monitor_token: str = Header(default="")) -> None:
-    if MONITOR_TOKEN and x_monitor_token != MONITOR_TOKEN:
+    if not MONITOR_TOKEN:
+        raise HTTPException(status_code=503, detail="server token is not configured")
+    if not hmac.compare_digest(x_monitor_token, MONITOR_TOKEN):
         raise HTTPException(status_code=401, detail="invalid token")
 
 
@@ -133,12 +146,13 @@ def update_available_metrics(state: dict, metrics: dict) -> None:
 state = load_state()
 app = FastAPI(title="Training Monitor")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+if CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["X-Monitor-Token", "Content-Type"],
+    )
 
 
 @app.get("/api/health")

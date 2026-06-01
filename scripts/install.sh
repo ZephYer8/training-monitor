@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -42,6 +43,7 @@ find_python() {
 }
 
 mkdir -p "$TRAINING_MONITOR_HOME" "$BIN_DIR"
+chmod 700 "$TRAINING_MONITOR_HOME" 2>/dev/null || true
 if [ "$(cd "$ROOT_DIR" && pwd)" != "$(cd "$TRAINING_MONITOR_HOME" && pwd)" ]; then
     rm -rf "$TRAINING_MONITOR_HOME/server" "$TRAINING_MONITOR_HOME/scripts"
     cp -R "$ROOT_DIR/server" "$TRAINING_MONITOR_HOME/server"

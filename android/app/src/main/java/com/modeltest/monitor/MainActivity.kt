@@ -1,6 +1,7 @@
 package com.modeltest.monitor
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.os.Bundle
@@ -63,6 +64,8 @@ import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -85,6 +88,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+
+private const val SettingsPrefs = "settings"
+private const val SecureSettingsPrefs = "secure_settings"
+private const val TokenKey = "token"
 
 
 private enum class AppPage(val title: String) {
@@ -1348,16 +1356,14 @@ private fun syncText(status: TrainingStatus, error: String?, isRefreshing: Boole
 
 
 private fun loadBaseUrl(context: Context): String {
-    return context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    return settingsPreferences(context)
         .getString("base_url", "http://10.0.2.2:6006")
         ?: "http://10.0.2.2:6006"
 }
 
 
 private fun saveBaseUrl(context: Context, baseUrl: String) {
-    context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    settingsPreferences(context)
         .edit()
         .putString("base_url", baseUrl)
         .apply()
@@ -1365,25 +1371,34 @@ private fun saveBaseUrl(context: Context, baseUrl: String) {
 
 
 private fun loadToken(context: Context): String {
-    return context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
-        .getString("token", "")
+    val secureToken = secureSettingsPreferences(context)
+        .getString(TokenKey, "")
         ?: ""
+    if (secureToken.isNotBlank()) return secureToken
+
+    val legacyToken = settingsPreferences(context).getString(TokenKey, "") ?: ""
+    if (legacyToken.isNotBlank()) {
+        saveToken(context, legacyToken)
+    }
+    return legacyToken
 }
 
 
 private fun saveToken(context: Context, token: String) {
-    context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    secureSettingsPreferences(context)
         .edit()
-        .putString("token", token)
+        .putString(TokenKey, token)
+        .apply()
+
+    settingsPreferences(context)
+        .edit()
+        .remove(TokenKey)
         .apply()
 }
 
 
 private fun loadCachedStatus(context: Context): TrainingStatus? {
-    val raw = context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    val raw = settingsPreferences(context)
         .getString("cached_status_json", null)
         ?: return null
     return runCatching { parseTrainingStatus(JSONObject(raw)) }.getOrNull()
@@ -1391,8 +1406,7 @@ private fun loadCachedStatus(context: Context): TrainingStatus? {
 
 
 private fun saveCachedStatus(context: Context, raw: String) {
-    context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    settingsPreferences(context)
         .edit()
         .putString("cached_status_json", raw)
         .apply()
@@ -1400,16 +1414,14 @@ private fun saveCachedStatus(context: Context, raw: String) {
 
 
 private fun loadRefreshSeconds(context: Context): Int {
-    return context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    return settingsPreferences(context)
         .getInt("refresh_seconds", 2)
         .coerceIn(1, 60)
 }
 
 
 private fun saveRefreshSeconds(context: Context, seconds: Int) {
-    context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    settingsPreferences(context)
         .edit()
         .putInt("refresh_seconds", seconds)
         .apply()
@@ -1417,17 +1429,39 @@ private fun saveRefreshSeconds(context: Context, seconds: Int) {
 
 
 private fun loadSelectedMetricsText(context: Context): String {
-    return context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    return settingsPreferences(context)
         .getString("selected_metrics", "")
         ?: ""
 }
 
 
 private fun saveSelectedMetricsText(context: Context, value: String) {
-    context
-        .getSharedPreferences("settings", Context.MODE_PRIVATE)
+    settingsPreferences(context)
         .edit()
         .putString("selected_metrics", value)
         .apply()
+}
+
+
+private fun settingsPreferences(context: Context): SharedPreferences {
+    return context.getSharedPreferences(SettingsPrefs, Context.MODE_PRIVATE)
+}
+
+
+@Suppress("DEPRECATION")
+private fun secureSettingsPreferences(context: Context): SharedPreferences {
+    return runCatching {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        EncryptedSharedPreferences.create(
+            context,
+            SecureSettingsPrefs,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    }.getOrElse {
+        settingsPreferences(context)
+    }
 }

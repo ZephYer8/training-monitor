@@ -16,6 +16,8 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 新版 App 会缓存最后一次成功同步的数据。服务器关机、训练完成后断网、临时网络不稳定时，手机端仍然能看到最后一次同步到本地的训练进度和曲线。
 
+安全默认值：服务端接口必须使用 token；App 会加密保存 token；安装脚本默认只从 GitHub 官方地址下载源码，镜像下载需要你手动开启。
+
 ## 1. 快速开始
 
 在训练服务器上执行：
@@ -24,7 +26,7 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 curl -fsSL https://raw.githubusercontent.com/ZephYer8/training-monitor/main/install.sh | bash
 ```
 
-如果服务器访问 GitHub 很慢，安装脚本会自动尝试镜像下载源码。也可以手动指定镜像：
+如果服务器访问 GitHub 很慢，可以手动指定镜像。注意：镜像下载更快，但需要你信任这个镜像源。
 
 ```bash
 TRAINING_MONITOR_ARCHIVE_URLS="https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/archive/refs/heads/main.tar.gz" \
@@ -67,6 +69,14 @@ access token: xxxxxxxxxxxxxxxxxxxxxxxx
 - `Access Token`：服务器输出的 `access token`
 
 点 `Save` 后，App 会每 2 秒自动刷新训练状态。
+
+不要把 `access token` 发给别人。如果怀疑泄露，在服务器上执行：
+
+```bash
+training-monitor rotate-token
+```
+
+然后把 App 里的 `Access Token` 改成新的。
 
 ## 2. 服务器安装
 
@@ -117,7 +127,7 @@ training-monitor setup
 ```text
 Port [6006]:
 Public URL [自动检测到的地址]:
-Log roots [/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root]:
+Log roots [/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs]:
 Log type auto/mmseg/yolo [auto]:
 Auto watch 1/0 [1]:
 ```
@@ -186,6 +196,12 @@ training-monitor connection
 
 ```bash
 training-monitor token
+```
+
+重新生成 token：
+
+```bash
+training-monitor rotate-token
 ```
 
 查看后端和自动检测日志：
@@ -264,7 +280,6 @@ training-monitor status
 /root/autodl-tmp
 /root/workspace
 /root/runs
-/root
 ```
 
 自动检测逻辑很简单：扫描这些目录里最新的支持文件，然后读取指标。
@@ -463,7 +478,26 @@ training-monitor connection
 - 如果 App 报 `HTTP 401`，说明 token 填错了。
 - 如果 App 报连接失败，通常是 URL、端口或公网映射问题。
 
-## 13. 更新版本
+## 13. 安全建议
+
+默认情况下，Training Monitor 只适合保存训练进度、loss、mIoU、mAP 这类实验指标，不要把数据集路径里的隐私信息或账号密码写进训练日志。
+
+推荐做法：
+
+- `access token` 只填在自己的手机 App 里，不要发到聊天、群、笔记或公开仓库。
+- 如果 token 泄露，执行 `training-monitor rotate-token` 重新生成。
+- 如果平台提供 HTTPS 公网地址，App 里优先填写 `https://...`。
+- GitHub 下载慢时可以手动使用镜像，但镜像源不是默认开启的。
+- 如果自动扫描范围太大，用 `training-monitor config set LOG_ROOTS "/你的训练输出目录"` 缩小范围。
+
+当前安全边界：
+
+- `/api/status` 和 `/api/reset` 必须带正确 `X-Monitor-Token`。
+- token、配置文件、状态文件默认按当前用户私有权限保存。
+- App 使用 Android Keystore 加密保存 token，并关闭系统备份。
+- 默认不启用浏览器跨域访问；如果你要做 Web 前端，再配置 `CORS_ORIGINS`。
+
+## 14. 更新版本
 
 在服务器上重新执行安装命令即可：
 
@@ -479,7 +513,7 @@ training-monitor restart
 
 安卓 App 下载最新 Release 里的 APK 覆盖安装即可。
 
-## 14. 卸载
+## 15. 卸载
 
 先停止服务：
 
@@ -507,7 +541,7 @@ rm -rf ~/.training-monitor
 rm -f ~/.local/bin/training-monitor
 ```
 
-## 15. 推荐使用方式
+## 16. 推荐使用方式
 
 最省心的方式：
 

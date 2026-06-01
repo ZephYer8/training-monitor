@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 REPO_URL="${TRAINING_MONITOR_REPO:-https://github.com/ZephYer8/training-monitor}"
 REF="${TRAINING_MONITOR_REF:-main}"
@@ -20,7 +21,7 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 ARCHIVE_PATH="$REPO_URL/archive/refs/heads/$REF.tar.gz"
-ARCHIVE_URLS="${TRAINING_MONITOR_ARCHIVE_URLS:-$ARCHIVE_PATH https://gh-proxy.com/$ARCHIVE_PATH https://hub.gitmirror.com/$ARCHIVE_PATH}"
+ARCHIVE_URLS="${TRAINING_MONITOR_ARCHIVE_URLS:-$ARCHIVE_PATH}"
 ARCHIVE_FILE="$TMP_DIR/source.tar.gz"
 
 download_archive() {
