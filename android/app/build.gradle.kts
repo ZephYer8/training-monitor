@@ -12,8 +12,8 @@ android {
         applicationId = "com.modeltest.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.6.4"
+        versionCode = 12
+        versionName = "0.6.5"
     }
 
     buildFeatures {
