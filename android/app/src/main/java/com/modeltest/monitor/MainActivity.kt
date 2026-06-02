@@ -77,6 +77,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -547,7 +548,7 @@ private fun Header(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "训练监控",
+                text = "训迹",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -1219,10 +1220,17 @@ private fun SettingsScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            if (normalizeBaseUrl(draftUrl).startsWith("http://")) {
+                Text(
+                    "当前使用 HTTP，适合内网或临时测试；公网长期使用建议配置 HTTPS，避免 Token 在网络中被截获。",
+                    color = Color(0xFFB45309),
+                )
+            }
             OutlinedTextField(
                 value = draftToken,
                 onValueChange = onTokenChange,
                 label = { Text("访问 Token") },
+                visualTransformation = PasswordVisualTransformation(),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -1295,14 +1303,14 @@ private fun SettingsScreen(
         }
 
         SettingsCard(title = "关于应用") {
-            Text("训练监控 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
+            Text("训迹 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
             Text("包名：${context.packageName}", color = Color(0xFF6B7280))
             Text(
                 "本应用只连接你配置的训练监控后端，Token 加密保存在本机，不采集通讯录、定位、相册等个人信息。",
                 color = Color(0xFF6B7280),
             )
             Text(
-                "后期申请软著或上架时，可使用名称“训练监控”与包名 ${context.packageName} 作为基础信息。",
+                "后期申请软著或上架时，可使用名称“训迹”与包名 ${context.packageName} 作为基础信息。",
                 color = Color(0xFF6B7280),
             )
         }
