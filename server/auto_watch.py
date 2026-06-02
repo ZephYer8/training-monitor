@@ -1,18 +1,17 @@
 import argparse
 import csv
 import os
-import re
 import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
-from training_monitor import TrainingMonitor
-from watch_mmseg_log import (
-    choose_primary_metric as choose_mmseg_primary_metric,
+from openmmlab_log import (
+    best_row as best_openmmlab_row,
     infer_total_epochs,
-    parse_eta_seconds,
-    parse_mmseg_line_metrics,
+    parse_openmmlab_history,
+    parse_openmmlab_line,
 )
+from training_monitor import TrainingMonitor
 
 
 Metric = Tuple[str, int, float, Optional[int], Dict[str, float]]
@@ -30,14 +29,14 @@ def iter_files(roots: Iterable[str]) -> Iterable[Path]:
 
 
 def is_supported(path: Path) -> bool:
-    if path.suffix == ".log":
+    if path.suffix in {".log", ".json", ".jsonl"}:
         return True
     if path.suffix != ".csv":
         return False
     return any(word in path.name.lower() for word in ("result", "metric", "progress"))
 
 
-def latest_file(roots: List[str]) -> Optional[Path]:
+def latest_files(roots: List[str]) -> List[Path]:
     candidates = []
     for path in iter_files(roots):
         try:
@@ -46,9 +45,9 @@ def latest_file(roots: List[str]) -> Optional[Path]:
             continue
 
     if not candidates:
-        return None
+        return []
 
-    return max(candidates, key=lambda item: item[0])[1]
+    return [path for _, path in sorted(candidates, key=lambda item: item[0], reverse=True)]
 
 
 def parse_file(path: Path, total_epochs_fallback: int) -> ParsedFile:
@@ -61,51 +60,27 @@ def parse_file(path: Path, total_epochs_fallback: int) -> ParsedFile:
 def parse_history(path: Path, total_epochs_fallback: int) -> Tuple[int, List[Metric]]:
     if path.suffix == ".csv":
         return parse_csv_history(path, total_epochs_fallback)
-    return parse_mmseg_history(path, total_epochs_fallback)
+    return parse_openmmlab_history(path, total_epochs_fallback)
 
 
 def parse_mmseg_log(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
-    total_epochs, rows = parse_mmseg_history(path, total_epochs_fallback)
+    total_epochs, rows = parse_openmmlab_history(path, total_epochs_fallback)
     if not rows:
         return total_epochs, None, None
     return total_epochs, best_row(rows), rows[-1]
 
 
 def parse_mmseg_history(path: Path, total_epochs_fallback: int) -> Tuple[int, List[Metric]]:
-    by_epoch: Dict[int, Metric] = {}
-    with path.open("r", encoding="utf-8", errors="ignore") as file:
-        for line in file:
-            parsed = parse_mmseg_line(line)
-            if not parsed:
-                continue
-            _, epoch, _, eta_seconds, metrics = parsed
-            existing = by_epoch.get(epoch)
-            merged_metrics = dict(existing[4]) if existing else {}
-            merged_metrics.update(metrics)
-            primary_metric = choose_mmseg_primary_metric(merged_metrics)
-            by_epoch[epoch] = (
-                primary_metric,
-                epoch,
-                merged_metrics[primary_metric],
-                eta_seconds if eta_seconds is not None else existing[3] if existing else None,
-                merged_metrics,
-            )
-
-    rows = [by_epoch[epoch] for epoch in sorted(by_epoch)]
-    return infer_total_epochs(path, total_epochs_fallback), rows
+    return parse_openmmlab_history(path, total_epochs_fallback)
 
 
 def parse_mmseg_line(line: str) -> Optional[Metric]:
-    match = re.search(r"Epoch\((?:val|train)\) \[(\d+)\]\[\s*\d+/\d+\]", line)
-    if not match:
+    parsed = parse_openmmlab_line(line)
+    if parsed is None:
         return None
-    eta_match = re.search(r"eta: ([0-9:]+)", line)
-    eta_seconds = parse_eta_seconds(eta_match.group(1)) if eta_match else None
-    metrics = parse_mmseg_line_metrics(line)
-    if not metrics:
-        return None
-    primary_metric = choose_mmseg_primary_metric(metrics)
-    return primary_metric, int(match.group(1)), metrics[primary_metric], eta_seconds, metrics
+    _, epoch, eta_seconds, metrics = parsed
+    metric_name = choose_primary_metric(metrics)
+    return metric_name, epoch, metrics[metric_name], eta_seconds, metrics
 
 
 def parse_csv_metrics(path: Path, total_epochs_fallback: int) -> Tuple[int, Optional[Metric], Optional[Metric]]:
@@ -199,10 +174,7 @@ def normalize_metric_value(name: str, value: float) -> float:
 
 
 def best_row(rows: List[Metric]) -> Metric:
-    quality_rows = [item for item in rows if "loss" not in item[0].lower()]
-    if quality_rows:
-        return max(quality_rows, key=lambda item: item[2])
-    return min(rows, key=lambda item: item[2])
+    return best_openmmlab_row(rows)
 
 
 def parse_int(value: Optional[str]) -> Optional[int]:
@@ -247,7 +219,20 @@ def main() -> None:
     parser.add_argument(
         "--roots",
         nargs="*",
-        default=["/root/mmsegmentation*", "/root/autodl-tmp", "/root/workspace", "/root/runs"],
+        default=[
+            "/root/mmdetection*",
+            "/root/mmsegmentation*",
+            "/root/mmclassification*",
+            "/root/mmpretrain*",
+            "/root/mmpose*",
+            "/root/mmrotate*",
+            "/root/mmocr*",
+            "/root/mmaction*",
+            "/root/mmagic*",
+            "/root/autodl-tmp",
+            "/root/workspace",
+            "/root/runs",
+        ],
     )
     args = parser.parse_args()
 
@@ -256,17 +241,19 @@ def main() -> None:
     last_sent: Optional[Tuple[Path, int, Tuple[Tuple[str, float], ...], Optional[int]]] = None
 
     while True:
-        path = latest_file(args.roots)
-        if path is None:
+        parsed_file = None
+        for candidate in latest_files(args.roots):
+            total_epochs, best, latest, rows = parse_file(candidate, args.total_epochs)
+            if latest is not None:
+                parsed_file = candidate, total_epochs, best, latest, rows
+                break
+
+        if parsed_file is None:
             print("no supported training log found", flush=True)
             time.sleep(args.interval)
             continue
 
-        total_epochs, best, latest, rows = parse_file(path, args.total_epochs)
-        if latest is None:
-            print(f"waiting for metrics in {path}", flush=True)
-            time.sleep(args.interval)
-            continue
+        path, total_epochs, best, latest, rows = parsed_file
 
         current = (path, latest[1], tuple(sorted(latest[4].items())), latest[3])
         run_id = str(path)
