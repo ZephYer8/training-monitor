@@ -14,10 +14,8 @@ fi
 
 if [ -n "${TRAINING_MONITOR_BIN_DIR:-}" ]; then
     BIN_DIR="$TRAINING_MONITOR_BIN_DIR"
-elif [ "$(id -u)" = "0" ] && [ -d "/usr/local/bin" ] && [ -w "/usr/local/bin" ]; then
-    BIN_DIR="/usr/local/bin"
 else
-    BIN_DIR="$HOME/.local/bin"
+    BIN_DIR=""
 fi
 PYTHON="${TRAINING_MONITOR_PYTHON:-}"
 
@@ -42,7 +40,7 @@ find_python() {
     exit 1
 }
 
-mkdir -p "$TRAINING_MONITOR_HOME" "$BIN_DIR"
+mkdir -p "$TRAINING_MONITOR_HOME"
 chmod 700 "$TRAINING_MONITOR_HOME" 2>/dev/null || true
 if [ "$(cd "$ROOT_DIR" && pwd)" != "$(cd "$TRAINING_MONITOR_HOME" && pwd)" ]; then
     rm -rf "$TRAINING_MONITOR_HOME/server" "$TRAINING_MONITOR_HOME/scripts"
@@ -60,21 +58,58 @@ fi
 "$TRAINING_MONITOR_HOME/venv/bin/python" -m pip install -r "$TRAINING_MONITOR_HOME/server/requirements.txt"
 
 chmod +x "$TRAINING_MONITOR_HOME/scripts/monitorctl"
-ln -sf "$TRAINING_MONITOR_HOME/scripts/monitorctl" "$BIN_DIR/training-monitor" 2>/dev/null || true
 
-case ":$PATH:" in
-    *":$BIN_DIR:"*) ;;
-    *)
-        if [ "$BIN_DIR" = "$HOME/.local/bin" ]; then
-            mkdir -p "$HOME"
-            touch "$HOME/.bashrc"
-            if ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc" 2>/dev/null; then
-                printf '\nexport PATH="$HOME/.local/bin:$PATH"\n' >> "$HOME/.bashrc"
-            fi
-            export PATH="$BIN_DIR:$PATH"
+install_command() {
+    local target="$1"
+    mkdir -p "$(dirname "$target")" 2>/dev/null || return 1
+    cat > "$target" <<EOF
+#!/usr/bin/env bash
+exec "$TRAINING_MONITOR_HOME/scripts/monitorctl" "\$@"
+EOF
+    chmod +x "$target"
+}
+
+install_command_entries() {
+    COMMAND_PATH=""
+    if [ -n "$BIN_DIR" ]; then
+        install_command "$BIN_DIR/training-monitor" && COMMAND_PATH="$BIN_DIR/training-monitor"
+    fi
+
+    IFS=':' read -r -a PATH_DIRS <<< "$PATH"
+    for dir in "${PATH_DIRS[@]}"; do
+        [ -n "$dir" ] || continue
+        [ -d "$dir" ] || continue
+        [ -w "$dir" ] || continue
+        install_command "$dir/training-monitor" || continue
+        [ -z "$COMMAND_PATH" ] && COMMAND_PATH="$dir/training-monitor"
+    done
+
+    for dir in /usr/local/bin /usr/bin "$HOME/.local/bin"; do
+        [ -n "$dir" ] || continue
+        install_command "$dir/training-monitor" || continue
+        [ -z "$COMMAND_PATH" ] && COMMAND_PATH="$dir/training-monitor"
+    done
+
+    [ -n "$COMMAND_PATH" ] || {
+        echo "Failed to install training-monitor command. Try running with sudo/root or set TRAINING_MONITOR_BIN_DIR." >&2
+        exit 1
+    }
+
+    if [ -d "$HOME" ]; then
+        touch "$HOME/.bashrc" 2>/dev/null || true
+        if ! grep -q 'training-monitor/bin-path' "$HOME/.bashrc" 2>/dev/null; then
+            cat >> "$HOME/.bashrc" <<'EOF'
+
+# training-monitor/bin-path
+export PATH="/usr/local/bin:/usr/bin:$HOME/.local/bin:$PATH"
+EOF
         fi
-        ;;
-esac
+    fi
+
+    export PATH="/usr/local/bin:/usr/bin:$HOME/.local/bin:$PATH"
+}
+
+install_command_entries
 
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" token-init
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" start
@@ -83,11 +118,11 @@ esac
 echo
 echo "Training Monitor installed"
 echo "Control command: $TRAINING_MONITOR_HOME/scripts/monitorctl"
-echo "Command: $BIN_DIR/training-monitor"
+echo "Command: $COMMAND_PATH"
 if command -v training-monitor >/dev/null 2>&1; then
     echo "You can run: training-monitor status"
 else
-    echo "If your shell cannot find it, run: $BIN_DIR/training-monitor status"
+    echo "If your shell cannot find it, run: $COMMAND_PATH status"
 fi
 echo
 "$TRAINING_MONITOR_HOME/scripts/monitorctl" connection

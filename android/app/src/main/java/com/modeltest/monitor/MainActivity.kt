@@ -896,9 +896,9 @@ private fun MetricCard(
 
 @Composable
 private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>) {
-        val chartMetrics = chartMetricsFor(status, visibleMetrics).filter { metric ->
-            status.history.count { it.metrics[metric] != null } >= 2
-        }
+    val chartMetric = chartMetricsFor(status, visibleMetrics).firstOrNull { metric ->
+        status.history.count { it.metrics[metric] != null } >= 2
+    }
 
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
@@ -919,7 +919,7 @@ private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>) 
                 Text("${status.history.size} 条记录", color = Color(0xFF6B7280))
             }
 
-            if (chartMetrics.isEmpty()) {
+            if (chartMetric == null) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -931,12 +931,12 @@ private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>) 
             } else {
                 MetricsChart(
                     history = status.history,
-                    metrics = chartMetrics,
+                    metrics = listOf(chartMetric),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(190.dp),
                 )
-                ChartLegend(chartMetrics)
+                ChartLegend(listOf(chartMetric))
             }
         }
     }
@@ -967,53 +967,63 @@ private fun ChartsScreen(
         }
         val selectedAvailable = resolveSelectedMetrics(status, selectedMetrics)
 
-        ElevatedCard(
-            shape = RoundedCornerShape(10.dp),
-            colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
-            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+        if (chartMetrics.isEmpty()) {
+            ElevatedCard(
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(
-                    text = chartMetrics.firstOrNull()?.let { "${metricDisplayName(it)} Trend" } ?: "Metric Trend",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                if (selectedAvailable.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp)
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        text = "当前指标：${selectedAvailable.joinToString(" / ") { metricDisplayName(it) }}",
+                        if (selectedMetrics.isEmpty()) {
+                            "请先到设置中选择要显示的指标"
+                        } else {
+                            "当前选择的指标还没有足够历史数据"
+                        },
                         color = Color(0xFF6B7280),
+                        textAlign = TextAlign.Center,
                     )
                 }
-                if (chartMetrics.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(260.dp),
-                        contentAlignment = Alignment.Center,
+            }
+        } else {
+            chartMetrics.forEach { metric ->
+                ElevatedCard(
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Text(
-                            if (selectedMetrics.isEmpty()) {
-                                "请先到设置中选择要显示的指标"
-                            } else {
-                                "当前选择的指标还没有足够历史数据"
-                            },
-                            color = Color(0xFF6B7280),
-                            textAlign = TextAlign.Center,
+                            text = "${metricDisplayName(metric)} Trend",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
                         )
+                        if (selectedAvailable.size > 1) {
+                            Text(
+                                text = "已选择：${selectedAvailable.joinToString(" / ") { metricDisplayName(it) }}",
+                                color = Color(0xFF6B7280),
+                            )
+                        }
+                        MetricsChart(
+                            history = status.history,
+                            metrics = listOf(metric),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(280.dp),
+                        )
+                        ChartLegend(listOf(metric))
                     }
-                } else {
-                    MetricsChart(
-                        history = status.history,
-                        metrics = chartMetrics,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(280.dp),
-                    )
-                    ChartLegend(chartMetrics)
                 }
             }
         }
@@ -1107,20 +1117,23 @@ private fun MetricsChart(
                 path = path,
                 color = ChartColors[index % ChartColors.size],
                 style = Stroke(
-                    width = 3.dp.toPx(),
+                    width = if (points.size > 120) 1.6.dp.toPx() else 2.dp.toPx(),
                     cap = StrokeCap.Round,
                     join = StrokeJoin.Round,
                 ),
             )
-            points.forEach { (epoch, value) ->
-                val x = left + (right - left) * ((epoch - minEpoch).toFloat() / epochSpan.toFloat())
-                val normalized = ((value - minValue) / valueSpan).toFloat().coerceIn(0f, 1f)
-                val y = bottom - (bottom - top) * normalized
-                drawCircle(
-                    color = ChartColors[index % ChartColors.size],
-                    radius = 3.dp.toPx(),
-                    center = Offset(x, y),
-                )
+            if (points.size <= 240) {
+                val pointRadius = if (points.size > 120) 1.1.dp.toPx() else 1.8.dp.toPx()
+                points.forEach { (epoch, value) ->
+                    val x = left + (right - left) * ((epoch - minEpoch).toFloat() / epochSpan.toFloat())
+                    val normalized = ((value - minValue) / valueSpan).toFloat().coerceIn(0f, 1f)
+                    val y = bottom - (bottom - top) * normalized
+                    drawCircle(
+                        color = ChartColors[index % ChartColors.size],
+                        radius = pointRadius,
+                        center = Offset(x, y),
+                    )
+                }
             }
         }
     }
@@ -1553,7 +1566,7 @@ private fun chooseVisibleMetrics(status: TrainingStatus, selected: List<String>)
 
 
 private fun chooseChartMetrics(status: TrainingStatus, selected: List<String>): List<String> {
-    return resolveSelectedMetrics(status, selected).take(2)
+    return resolveSelectedMetrics(status, selected).take(6)
 }
 
 
@@ -1579,7 +1592,7 @@ private fun chartMetricsFor(status: TrainingStatus, visibleMetrics: List<String>
     val candidates = visibleMetrics.ifEmpty {
         status.primaryMetric()?.let { listOf(it) } ?: emptyList()
     }
-    return candidates.take(2)
+    return candidates.take(1)
 }
 
 
@@ -1949,8 +1962,8 @@ private fun notificationSummary(context: Context, status: TrainingStatus): Strin
     }
     val etaText = status.etaSeconds?.let { " · ETA ${formatEta(it)}" } ?: ""
     val summary = listOfNotNull(
-        if (status.totalEpochs > 0) "Epoch ${status.epoch}/${status.totalEpochs}" else null,
         metricText.ifBlank { null },
+        if (status.totalEpochs > 0) "Epoch ${status.epoch}/${status.totalEpochs}" else null,
     ).joinToString(" · ") + etaText
     return summary.ifBlank { "等待训练数据" }
 }
@@ -1958,9 +1971,12 @@ private fun notificationSummary(context: Context, status: TrainingStatus): Strin
 
 private fun notificationMetrics(context: Context, status: TrainingStatus): List<String> {
     val selected = parseMetricList(loadSelectedMetricsText(context))
+    val available = status.metricNames()
+    val preferredBest = listOf("mIoU", "IoU", "mAP", "mAP50", "accuracy")
+        .firstNotNullOfOrNull { canonicalMetric(it, available) }
+        ?: status.primaryMetric()
+    val selectedMetrics = resolveSelectedMetrics(status, selected)
     val visible = chooseVisibleMetrics(status, selected)
-    val metrics = visible.ifEmpty {
-        status.primaryMetric()?.let { listOf(it) } ?: emptyList()
-    }
+    val metrics = (listOfNotNull(preferredBest) + selectedMetrics + visible).distinct()
     return metrics.take(2)
 }
