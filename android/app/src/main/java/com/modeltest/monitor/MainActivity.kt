@@ -1586,7 +1586,7 @@ private fun chooseVisibleMetrics(status: TrainingStatus, selected: List<String>)
     val chosen = resolveSelectedMetrics(status, selected)
     if (chosen.isNotEmpty()) return chosen.take(6)
 
-    val defaults = listOf("loss", status.metricName, "mIoU", "IoU", "mAP", "accuracy")
+    val defaults = listOf("loss", status.metricName, "mIoU", "IoU", "mAP", "BBox mAP", "Accuracy", "accuracy", "Top1 Acc")
     return (defaults + available).filter { it in available }.distinct().take(4)
 }
 
@@ -1660,9 +1660,35 @@ private fun metricDisplayName(name: String): String {
         "mfscore" -> "mFscore"
         "map" -> "mAP"
         "map50" -> "mAP50"
+        "bbox map" -> "BBox mAP"
+        "bbox map50" -> "BBox mAP50"
+        "segm map" -> "Segm mAP"
+        "segm map50" -> "Segm mAP50"
+        "ap" -> "AP"
+        "ar" -> "AR"
         "accuracy" -> "Accuracy"
+        "top1 acc", "top1_acc", "top1" -> "Top1 Acc"
+        "top5 acc", "top5_acc", "top5" -> "Top5 Acc"
         "precision" -> "Precision"
         "recall" -> "Recall"
+        "pck" -> "PCK"
+        "auc" -> "AUC"
+        "hmean" -> "Hmean"
+        "psnr" -> "PSNR"
+        "ssim" -> "SSIM"
+        "fid" -> "FID"
+        "is" -> "IS"
+        "mota" -> "MOTA"
+        "motp" -> "MOTP"
+        "idf1" -> "IDF1"
+        "idp" -> "IDP"
+        "idr" -> "IDR"
+        "word acc", "word_acc" -> "Word Acc"
+        "mean class accuracy", "mean_class_accuracy" -> "Mean Class Acc"
+        "mae" -> "MAE"
+        "rmse" -> "RMSE"
+        "nme" -> "NME"
+        "epe" -> "EPE"
         else -> name
     }
 }
@@ -2033,7 +2059,7 @@ private fun notificationSummary(context: Context, status: TrainingStatus): Strin
 private fun notificationMetrics(context: Context, status: TrainingStatus): List<String> {
     val selected = parseMetricList(loadSelectedMetricsText(context))
     val available = status.metricNames()
-    val preferredBest = listOf("mIoU", "IoU", "mAP", "mAP50", "accuracy")
+    val preferredBest = listOf("mIoU", "IoU", "mAP", "BBox mAP", "Segm mAP", "mAP50", "Accuracy", "accuracy", "Top1 Acc")
         .firstNotNullOfOrNull { canonicalMetric(it, available) }
         ?: status.primaryMetric()
     val selectedMetrics = resolveSelectedMetrics(status, selected)
