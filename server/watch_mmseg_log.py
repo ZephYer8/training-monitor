@@ -1,28 +1,17 @@
 import argparse
 import os
-import re
 import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from openmmlab_log import (
+    choose_primary_metric,
+    infer_total_epochs,
+    parse_eta_seconds,
+    parse_line_metrics,
+    parse_openmmlab_history,
+)
 from training_monitor import TrainingMonitor
-
-
-TRAIN_RE = re.compile(r"Epoch\(train\) \[(\d+)\]\[\s*\d+/\d+\].*eta: ([0-9:]+)")
-LOSS_RE = re.compile(r"\bloss[:=]\s*([0-9.]+)")
-TOTAL_RE = re.compile(r"max_epochs\s*[=:]\s*(\d+)")
-METRIC_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_./-]*)\s*[:=]\s*(-?\d+(?:\.\d+)?(?:e[-+]?\d+)?)", re.I)
-PRIMARY_METRICS = ("mIoU", "IoU", "mDice", "mAcc", "aAcc", "mAP", "mAP50", "accuracy", "precision", "recall")
-SKIP_METRICS = {"eta", "time", "data_time", "memory", "iter", "epoch", "max_epochs"}
-
-
-def parse_eta_seconds(text: str) -> Optional[int]:
-    parts = [int(part) for part in text.split(":")]
-    if len(parts) == 3:
-        return parts[0] * 3600 + parts[1] * 60 + parts[2]
-    if len(parts) == 2:
-        return parts[0] * 60 + parts[1]
-    return None
 
 
 def parse_latest(log_path: Path) -> Optional[Tuple[int, float, Optional[int]]]:
@@ -33,118 +22,20 @@ def parse_latest(log_path: Path) -> Optional[Tuple[int, float, Optional[int]]]:
 
 
 def parse_latest_metrics(log_path: Path) -> Optional[Tuple[int, Dict[str, float], Optional[int], str]]:
-    latest_train_epoch: Optional[int] = None
-    latest_val_epoch: Optional[int] = None
-    latest_train_metrics: Dict[str, float] = {}
-    latest_val_metrics: Dict[str, float] = {}
-    latest_eta: Optional[int] = None
-
-    with log_path.open("r", encoding="utf-8", errors="ignore") as file:
-        for line in file:
-            epoch_match = re.search(r"Epoch\((val|train)\) \[(\d+)\]\[\s*\d+/\d+\]", line)
-            if not epoch_match:
-                continue
-
-            mode = epoch_match.group(1)
-            epoch = int(epoch_match.group(2))
-            metrics = parse_mmseg_line_metrics(line)
-            if not metrics:
-                continue
-
-            if mode == "val":
-                latest_val_epoch = epoch
-                latest_val_metrics = metrics
-            else:
-                latest_train_epoch = epoch
-                latest_train_metrics = metrics
-                train_match = TRAIN_RE.search(line)
-                if train_match:
-                    latest_eta = parse_eta_seconds(train_match.group(2))
-
-    if latest_val_epoch is None and not latest_train_metrics:
+    total_epochs, rows = parse_openmmlab_history(log_path, 0)
+    del total_epochs
+    if not rows:
         return None
-
-    metrics = {}
-    metrics.update(latest_train_metrics)
-    metrics.update(latest_val_metrics)
-
-    epoch = latest_val_epoch if latest_val_epoch is not None else latest_train_epoch or 0
+    latest = rows[-1]
+    epoch = latest[1]
+    metrics = latest[4]
+    latest_eta = latest[3]
     primary_metric = choose_primary_metric(metrics)
     return epoch, metrics, latest_eta, primary_metric
 
 
 def parse_mmseg_line_metrics(line: str) -> Dict[str, float]:
-    metrics = {}
-    for raw_name, raw_value in METRIC_RE.findall(line):
-        name = metric_label(raw_name)
-        if name is None:
-            continue
-        try:
-            value = float(raw_value)
-        except ValueError:
-            continue
-        metrics[name] = normalize_metric_value(name, value)
-
-    loss_match = LOSS_RE.search(line)
-    if loss_match and "loss" not in metrics:
-        metrics["loss"] = float(loss_match.group(1))
-    return metrics
-
-
-def metric_label(name: str) -> Optional[str]:
-    clean = name.strip()
-    lowered = clean.lower()
-    if lowered in SKIP_METRICS or lowered.endswith("/lr") or lowered == "lr":
-        return None
-
-    known = {
-        "miou": "mIoU",
-        "iou": "IoU",
-        "mdice": "mDice",
-        "mfscore": "mFscore",
-        "macc": "mAcc",
-        "aacc": "aAcc",
-        "accuracy": "accuracy",
-        "acc": "accuracy",
-        "precision": "precision",
-        "recall": "recall",
-        "map": "mAP",
-        "map50": "mAP50",
-    }
-    if lowered in known:
-        return known[lowered]
-    if "loss" in lowered:
-        return clean.split("/")[-1]
-    return None
-
-
-def normalize_metric_value(name: str, value: float) -> float:
-    if "loss" not in name.lower() and 0 <= value <= 1:
-        return value * 100
-    return value
-
-
-def choose_primary_metric(metrics: Dict[str, float]) -> str:
-    for name in PRIMARY_METRICS:
-        if name in metrics:
-            return name
-    for name in metrics:
-        if "loss" not in name.lower():
-            return name
-    return next(iter(metrics))
-
-
-def infer_total_epochs(log_path: Path, fallback: int) -> int:
-    if fallback > 0:
-        return fallback
-
-    with log_path.open("r", encoding="utf-8", errors="ignore") as file:
-        for line in file:
-            match = TOTAL_RE.search(line)
-            if match:
-                return int(match.group(1))
-
-    return 300
+    return parse_line_metrics(line)
 
 
 def main() -> None:
@@ -182,7 +73,7 @@ def main() -> None:
             )
             print(
                 f"sent epoch={epoch}/{total_epochs}, "
-                f"mIoU={iou:.4f}, eta_seconds={eta_seconds}",
+                f"{primary_metric}={iou:.4f}, eta_seconds={eta_seconds}",
                 flush=True,
             )
             last_sent = latest
