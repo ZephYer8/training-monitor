@@ -78,6 +78,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.util.Locale
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.CoroutineScope
@@ -318,14 +319,15 @@ private fun MonitorRoot() {
     var testMessage by rememberSaveable { mutableStateOf("") }
 
     suspend fun refreshOnce(url: String = savedUrl, token: String = savedToken) {
-        if (url.isBlank()) {
+        val normalizedUrl = normalizeBaseUrl(url)
+        if (normalizedUrl.isBlank()) {
             error = "请先在设置里填写后端地址"
             return
         }
 
         isRefreshing = true
         try {
-            val raw = fetchStatusJson(client, url, token)
+            val raw = fetchStatusJson(client, normalizedUrl, token)
             status = parseTrainingStatus(JSONObject(raw))
             saveCachedStatus(context, raw)
             error = null
@@ -408,7 +410,8 @@ private fun MonitorRoot() {
                             }
                         },
                         onSave = {
-                            savedUrl = draftUrl.trim()
+                            savedUrl = normalizeBaseUrl(draftUrl)
+                            draftUrl = savedUrl
                             savedToken = draftToken.trim()
                             saveBaseUrl(context, savedUrl)
                             saveToken(context, savedToken)
@@ -418,7 +421,7 @@ private fun MonitorRoot() {
                             scope.launch {
                                 testMessage = "正在测试连接..."
                                 runCatching {
-                                    val raw = fetchStatusJson(client, draftUrl.trim(), draftToken.trim())
+                                    val raw = fetchStatusJson(client, normalizeBaseUrl(draftUrl), draftToken.trim())
                                     saveCachedStatus(context, raw)
                                     parseTrainingStatus(JSONObject(raw))
                                 }
@@ -1192,6 +1195,8 @@ private fun SettingsScreen(
     onSave: () -> Unit,
     onTest: () -> Unit,
 ) {
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1211,6 +1216,7 @@ private fun SettingsScreen(
                 value = draftUrl,
                 onValueChange = onUrlChange,
                 label = { Text("后端地址") },
+                placeholder = { Text("例如 10.0.0.2:6006 或 https://example.com") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -1287,6 +1293,19 @@ private fun SettingsScreen(
                     )
                 }
             }
+        }
+
+        SettingsCard(title = "关于应用") {
+            Text("训练监控 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
+            Text("包名：${context.packageName}", color = Color(0xFF6B7280))
+            Text(
+                "本应用只连接你配置的训练监控后端，Token 加密保存在本机，不采集通讯录、定位、相册等个人信息。",
+                color = Color(0xFF6B7280),
+            )
+            Text(
+                "后期申请软著或上架时，可使用名称“训练监控”与包名 ${context.packageName} 作为基础信息。",
+                color = Color(0xFF6B7280),
+            )
         }
     }
 }
@@ -1692,6 +1711,41 @@ private fun syncText(status: TrainingStatus, error: String?, isRefreshing: Boole
     if (isRefreshing) return "正在同步最新数据..."
     if (status.updatedAt.isBlank()) return "等待训练数据"
     return "实时同步中 · 上次更新 ${status.updatedAt.replace("T", " ")}"
+}
+
+
+private fun normalizeBaseUrl(value: String): String {
+    val trimmed = value.trim().trimEnd('/')
+    if (trimmed.isBlank()) return ""
+    val lowered = trimmed.lowercase(Locale.US)
+    return if (lowered.startsWith("http://") || lowered.startsWith("https://")) {
+        trimmed
+    } else {
+        "http://$trimmed"
+    }
+}
+
+
+private fun appVersionText(context: Context): String {
+    return runCatching {
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(
+                context.packageName,
+                PackageManager.PackageInfoFlags.of(0),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        }
+        val versionName = packageInfo.versionName ?: "unknown"
+        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode.toString()
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toString()
+        }
+        "v$versionName ($versionCode)"
+    }.getOrDefault("")
 }
 
 
