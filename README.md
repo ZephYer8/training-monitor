@@ -7,12 +7,12 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 当前版本适合这些场景：
 
-- `mmsegmentation`：自动读取 `.log` 里的 `mIoU`。
+- OpenMMLab / MMEngine：自动读取 `.log`、`.json`、`.jsonl` 里的 `loss`、`mIoU`、`BBox mAP`、`Top1 Acc`、`PCK` 等常见指标。
 - YOLO / Ultralytics：自动读取 `results.csv` 里的 `mAP`。
 - 其他 PyTorch 项目：可以用通用 HTTP 接口或 Python helper 主动上报。
 - 任意服务器：只要能运行 Python，并且手机能访问服务器的后端地址即可。
 
-> 说明：不同深度学习框架没有统一日志格式，所以不可能百分百自动识别所有项目。这个工具的原则是：常见日志自动识别，特殊项目用统一接口接入。
+> 说明：不同深度学习框架没有完全统一的日志格式，所以不承诺百分百自动识别所有项目。这个工具的原则是：OpenMMLab / YOLO 常见日志自动识别，特殊项目用统一接口接入。
 
 新版 App 会缓存最后一次成功同步的数据。服务器关机、训练完成后断网、临时网络不稳定时，手机端仍然能看到最后一次同步到本地的训练进度和曲线。
 
@@ -127,8 +127,8 @@ training-monitor setup
 ```text
 Port [6006]:
 Public URL [自动检测到的地址]:
-Log roots [/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs]:
-Log type auto/mmseg/yolo [auto]:
+Log roots [/root/mmdetection* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmagic* /root/autodl-tmp /root/workspace /root/runs]:
+Log type auto/openmmlab/yolo [auto]:
 Auto watch 1/0 [1]:
 ```
 
@@ -294,7 +294,15 @@ training-monitor status
 默认扫描目录：
 
 ```text
+/root/mmdetection*
 /root/mmsegmentation*
+/root/mmclassification*
+/root/mmpretrain*
+/root/mmpose*
+/root/mmrotate*
+/root/mmocr*
+/root/mmaction*
+/root/mmagic*
 /root/autodl-tmp
 /root/workspace
 /root/runs
@@ -304,7 +312,7 @@ training-monitor status
 
 当前支持：
 
-- `.log`：主要用于 `mmsegmentation`，读取 `mIoU`、`mDice`、`mAcc`、`aAcc`、`loss` 等常见指标
+- OpenMMLab / MMEngine `.log`、`.json`、`.jsonl`：读取 `loss`、`mIoU`、`mDice`、`BBox mAP`、`Segm mAP`、`Top1 Acc`、`PCK`、`Hmean` 等常见指标
 - `results.csv`：主要用于 YOLO / Ultralytics，读取 `mAP`
 - 文件名包含 `result` / `metric` / `progress` 的 `.csv`
 
@@ -315,14 +323,16 @@ CSV 至少需要包含：
 
 如果指标值是 `0.82` 这种 0 到 1 的小数，会自动转成 `82.0` 显示。
 
-## 8. mmsegmentation 接入
+## 8. OpenMMLab 接入
 
 大多数情况下不需要改训练代码。
 
-只要你的 mmsegmentation 日志在默认扫描目录下，例如：
+只要你的 OpenMMLab 项目日志在默认扫描目录下，例如：
 
 ```text
+/root/mmdetection/work_dirs/xxx/20260602_xxxxxx.log
 /root/mmsegmentation-1.2.1/work_dirs/xxx/20260531_xxxxxx.log
+/root/mmpose/work_dirs/xxx/vis_data/20260602_xxxxxx.json
 ```
 
 安装服务后会自动识别最新日志。
@@ -330,7 +340,7 @@ CSV 至少需要包含：
 如果日志目录不在默认位置：
 
 ```bash
-training-monitor config set LOG_ROOTS "/你的/mmsegmentation/work_dirs"
+training-monitor config set LOG_ROOTS "/你的/OpenMMLab/work_dirs"
 training-monitor restart
 ```
 
@@ -368,7 +378,7 @@ training-monitor watch-file /root/yolo-project/runs/detect/train/results.csv 100
 
 ## 10. 通用 PyTorch 项目接入
 
-如果你的项目不是 mmsegmentation 或 YOLO，推荐主动上报指标。
+如果你的项目不是 OpenMMLab 或 YOLO，推荐主动上报指标。
 
 ### 9.1 用 HTTP 接口上报
 
@@ -566,7 +576,7 @@ rm -f ~/.local/bin/training-monitor
 1. 在每台训练服务器上安装一次 Training Monitor。
 2. 执行 `training-monitor setup` 配置公网地址和日志目录。
 3. 手机 App 里保存这台服务器的 URL 和 token。
-4. mmsegmentation / YOLO 直接靠自动检测。
+4. OpenMMLab / YOLO 直接靠自动检测。
 5. 其他 PyTorch 项目用 HTTP 接口主动上报。
 
 这样换服务器时，只需要重新安装并填写新的 URL 和 token，App 不需要重新开发。
