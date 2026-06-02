@@ -124,7 +124,7 @@ def build_metrics(update: TrainingUpdate) -> dict:
 
 def metric_should_minimize(name: str) -> bool:
     lowered = name.lower()
-    return "loss" in lowered or "error" in lowered
+    return any(word in lowered for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid"))
 
 
 def better_metric(name: str, value: float, best_value: Optional[float]) -> bool:
