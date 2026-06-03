@@ -439,6 +439,11 @@ private fun MonitorRoot() {
                             selectedMetricsText = next
                             saveSelectedMetricsText(context, next)
                         },
+                        onMetricMove = { metric, delta ->
+                            val next = moveMetricOrder(status, selectedMetrics, visibleMetrics, metric, delta)
+                            selectedMetricsText = next
+                            saveSelectedMetricsText(context, next)
+                        },
                     )
 
                     AppPage.Charts -> ChartsScreen(
@@ -568,6 +573,7 @@ private fun DashboardScreen(
     visibleMetrics: List<String>,
     onRefresh: () -> Unit,
     onMetricSwap: (String, String) -> Unit,
+    onMetricMove: (String, Int) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -584,7 +590,7 @@ private fun DashboardScreen(
         )
         ProgressHeroCard(status)
         BestSummaryCard(status, visibleMetrics)
-        MetricGrid(status, visibleMetrics, onMetricSwap)
+        MetricGrid(status, visibleMetrics, onMetricSwap, onMetricMove)
         MiniChartCard(status, visibleMetrics)
     }
 }
@@ -964,6 +970,7 @@ private fun MetricGrid(
     status: TrainingStatus,
     visibleMetrics: List<String>,
     onMetricSwap: (String, String) -> Unit,
+    onMetricMove: (String, Int) -> Unit,
 ) {
     if (visibleMetrics.isEmpty()) {
         EmptyCard("还没有指标", "等待训练脚本同步指标后，这里会自动显示。")
@@ -997,7 +1004,7 @@ private fun MetricGrid(
                 )
                 Text(
                     text = if (editingLayout) {
-                        "点选两个方块即可交换位置"
+                        "可前移、后移，也可点两个方块交换"
                     } else {
                         "显示设置中勾选的指标，可自定义顺序"
                     },
@@ -1036,6 +1043,8 @@ private fun MetricGrid(
                         selected = selectedMetric == metric,
                         editing = editingLayout,
                         position = position,
+                        canMovePrevious = position > 1,
+                        canMoveNext = position < visibleMetrics.size,
                         onClick = {
                             if (editingLayout) {
                                 val first = selectedMetric
@@ -1048,6 +1057,14 @@ private fun MetricGrid(
                                     }
                                 }
                             }
+                        },
+                        onMovePrevious = {
+                            selectedMetric = null
+                            onMetricMove(metric, -1)
+                        },
+                        onMoveNext = {
+                            selectedMetric = null
+                            onMetricMove(metric, 1)
                         },
                         modifier = if (rowMetrics.size == 1) {
                             Modifier.fillMaxWidth()
@@ -1071,7 +1088,11 @@ private fun MetricCard(
     selected: Boolean,
     editing: Boolean,
     position: Int,
+    canMovePrevious: Boolean,
+    canMoveNext: Boolean,
     onClick: () -> Unit,
+    onMovePrevious: () -> Unit,
+    onMoveNext: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cardModifier = if (editing) {
@@ -1136,8 +1157,24 @@ private fun MetricCard(
                 overflow = TextOverflow.Ellipsis,
             )
             if (editing) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(
+                        onClick = onMovePrevious,
+                        enabled = canMovePrevious,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("前移")
+                    }
+                    TextButton(
+                        onClick = onMoveNext,
+                        enabled = canMoveNext,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("后移")
+                    }
+                }
                 Text(
-                    text = if (selected) "已选中，点击另一个方块交换" else "点击选择并交换位置",
+                    text = if (selected) "已选中，再点另一块交换" else "也可以点两个方块交换",
                     color = Color(0xFF2563EB),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
@@ -1997,6 +2034,20 @@ private fun parseMetricList(text: String): List<String> {
 }
 
 
+private fun metricOrderForEdit(
+    status: TrainingStatus,
+    selected: List<String>,
+    visibleMetrics: List<String>,
+): MutableList<String> {
+    val available = status.metricNames()
+    return if (selected.isNotEmpty()) {
+        selected.map { canonicalMetric(it, available) ?: it }.toMutableList()
+    } else {
+        visibleMetrics.toMutableList()
+    }
+}
+
+
 private fun swapMetricOrder(
     status: TrainingStatus,
     selected: List<String>,
@@ -2004,12 +2055,7 @@ private fun swapMetricOrder(
     first: String,
     second: String,
 ): String {
-    val available = status.metricNames()
-    val next = if (selected.isNotEmpty()) {
-        selected.map { canonicalMetric(it, available) ?: it }.toMutableList()
-    } else {
-        visibleMetrics.toMutableList()
-    }
+    val next = metricOrderForEdit(status, selected, visibleMetrics)
     if (first !in next) next.add(first)
     if (second !in next) next.add(second)
     val firstIndex = next.indexOf(first)
@@ -2018,6 +2064,25 @@ private fun swapMetricOrder(
         val temp = next[firstIndex]
         next[firstIndex] = next[secondIndex]
         next[secondIndex] = temp
+    }
+    return next.filter { it.isNotBlank() }.distinct().joinToString(",")
+}
+
+
+private fun moveMetricOrder(
+    status: TrainingStatus,
+    selected: List<String>,
+    visibleMetrics: List<String>,
+    metric: String,
+    delta: Int,
+): String {
+    val next = metricOrderForEdit(status, selected, visibleMetrics)
+    if (metric !in next) next.add(metric)
+    val from = next.indexOf(metric)
+    val to = (from + delta).coerceIn(0, next.lastIndex)
+    if (from >= 0 && from != to) {
+        next.removeAt(from)
+        next.add(to, metric)
     }
     return next.filter { it.isNotBlank() }.distinct().joinToString(",")
 }
