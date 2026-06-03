@@ -123,8 +123,55 @@ ensure_runtime() {
     [ -d "$SERVER_DIR" ] || die "server directory not found. Reinstall first."
 }
 
+read_pid() {
+    [ -f "$1" ] || return 1
+    local pid
+    pid="$(cat "$1" 2>/dev/null || true)"
+    case "$pid" in
+        ''|*[!0-9]*) return 1 ;;
+        *) printf '%s' "$pid" ;;
+    esac
+}
+
 pid_alive() {
-    [ -f "$1" ] && kill -0 "$(cat "$1")" >/dev/null 2>&1
+    local pid
+    pid="$(read_pid "$1")" || return 1
+    kill -0 "$pid" >/dev/null 2>&1
+}
+
+pid_command_contains() {
+    local file="$1"
+    local needle="$2"
+    local pid
+    local cmd
+    pid="$(read_pid "$file")" || return 1
+    [ -r "/proc/$pid/cmdline" ] || return 1
+    cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+    [ -n "$cmd" ] && printf '%s' "$cmd" | grep -F -- "$needle" >/dev/null 2>&1
+}
+
+backend_running() {
+    pid_alive "$BACKEND_PID" && pid_command_contains "$BACKEND_PID" "uvicorn"
+}
+
+watcher_running() {
+    pid_alive "$WATCHER_PID" && pid_command_contains "$WATCHER_PID" "auto_watch.py"
+}
+
+backend_ready() {
+    "$VENV_PY" - <<PY >/dev/null 2>&1
+import urllib.request
+urllib.request.urlopen("http://127.0.0.1:$PORT/api/health", timeout=3).read()
+PY
+}
+
+clear_stale_pid() {
+    local file="$1"
+    local name="$2"
+    if [ -f "$file" ] && ! pid_alive "$file"; then
+        rm -f "$file"
+        echo "removed stale $name pid"
+    fi
 }
 
 token_init() {
@@ -155,9 +202,14 @@ start() {
     load_config
     token_init
 
-    if pid_alive "$BACKEND_PID"; then
+    clear_stale_pid "$BACKEND_PID" "server"
+    if backend_running && backend_ready; then
         echo "server already running, pid=$(cat "$BACKEND_PID")"
     else
+        if [ -f "$BACKEND_PID" ]; then
+            echo "server pid exists but service is unhealthy, restarting"
+            stop_one "$BACKEND_PID" "old server" "uvicorn"
+        fi
         cd "$SERVER_DIR"
         nohup env \
             MONITOR_TOKEN="$(cat "$TOKEN_FILE")" \
@@ -167,7 +219,12 @@ start() {
             > "$LOG_DIR/backend.log" 2>&1 &
         echo $! > "$BACKEND_PID"
         sleep 2
-        echo "server started, pid=$(cat "$BACKEND_PID"), port=$PORT"
+        if backend_ready; then
+            echo "server started, pid=$(cat "$BACKEND_PID"), port=$PORT"
+        else
+            echo "server started but health check is not ready yet, pid=$(cat "$BACKEND_PID"), port=$PORT"
+            echo "run: training-monitor logs"
+        fi
     fi
 
     if [ "$AUTO_WATCH" = "1" ]; then
@@ -178,16 +235,25 @@ start() {
 stop_one() {
     local file="$1"
     local name="$2"
+    local pattern="${3:-}"
     if pid_alive "$file"; then
+        if [ -n "$pattern" ] && ! pid_command_contains "$file" "$pattern"; then
+            rm -f "$file"
+            echo "$name pid was stale"
+            return
+        fi
         kill "$(cat "$file")" || true
         rm -f "$file"
         echo "$name stopped"
+    elif [ -f "$file" ]; then
+        rm -f "$file"
+        echo "$name pid was stale"
     fi
 }
 
 stop_all() {
-    stop_one "$WATCHER_PID" "watcher"
-    stop_one "$BACKEND_PID" "server"
+    stop_one "$WATCHER_PID" "watcher" "auto_watch.py"
+    stop_one "$BACKEND_PID" "server" "uvicorn"
 }
 
 restart() {
@@ -287,7 +353,7 @@ watch_file() {
     [ -n "$log_path" ] || die "usage: training-monitor watch-file /path/to/log-or-results.csv [total_epochs]"
     [ -f "$log_path" ] || die "file not found: $log_path"
 
-    stop_one "$WATCHER_PID" "old watcher"
+    stop_one "$WATCHER_PID" "old watcher" "auto_watch.py"
 
     cd "$SERVER_DIR"
     nohup env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch.py \
@@ -305,9 +371,13 @@ auto_watch() {
     load_config
     token_init
 
-    if pid_alive "$WATCHER_PID"; then
+    clear_stale_pid "$WATCHER_PID" "watcher"
+    if watcher_running; then
         echo "watcher already running, pid=$(cat "$WATCHER_PID")"
         return
+    elif [ -f "$WATCHER_PID" ]; then
+        rm -f "$WATCHER_PID"
+        echo "watcher pid was stale"
     fi
 
     cd "$SERVER_DIR"

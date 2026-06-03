@@ -140,11 +140,18 @@ class TrainingNotificationService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!hasNotificationPermission(this)) {
+            removeActiveTrainingNotification()
             stopSelf()
             return START_NOT_STICKY
         }
 
-        val cached = loadCachedStatus(this) ?: TrainingStatus()
+        val cached = loadCachedStatus(this)
+        if (loadBaseUrl(this).isBlank() || cached == null || !shouldShowTrainingNotification(cached)) {
+            removeActiveTrainingNotification()
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         startForeground(
             TrainingNotificationId,
             buildTrainingNotification(
@@ -181,15 +188,23 @@ class TrainingNotificationService : Service() {
                     parseTrainingStatus(JSONObject(raw))
                 }
 
-                updateTrainingNotification(status, notificationSummary(this@TrainingNotificationService, status))
-                if (status.status == "finished" && lastStatus != "finished") {
-                    showTrainingFinishedNotification(status)
+                if (shouldShowTrainingNotification(status)) {
+                    updateTrainingNotification(status, notificationSummary(this@TrainingNotificationService, status))
+                } else {
+                    if (status.status == "finished" && lastStatus != "finished") {
+                        showFinishedTrainingNotification(this@TrainingNotificationService, status)
+                    }
+                    lastStatus = status.status
+                    removeActiveTrainingNotification()
+                    stopSelf()
+                    return
                 }
                 lastStatus = status.status
             } catch (exc: Exception) {
-                val cached = loadCachedStatus(this@TrainingNotificationService) ?: TrainingStatus(status = "error")
-                updateTrainingNotification(cached, "连接失败，显示最后一次同步数据")
                 lastStatus = "error"
+                removeActiveTrainingNotification()
+                stopSelf()
+                return
             }
 
             delay(delaySeconds * 1_000L)
@@ -203,11 +218,14 @@ class TrainingNotificationService : Service() {
         )
     }
 
-    private fun showTrainingFinishedNotification(status: TrainingStatus) {
-        notificationManager(this).notify(
-            TrainingFinishedNotificationId,
-            buildFinishedNotification(this, status),
-        )
+    private fun removeActiveTrainingNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        notificationManager(this).cancel(TrainingNotificationId)
     }
 }
 
@@ -312,6 +330,7 @@ private fun MonitorRoot() {
     var notificationEnabled by rememberSaveable { mutableStateOf(loadNotificationEnabled(context)) }
     var privacyAccepted by rememberSaveable { mutableStateOf(loadPrivacyAccepted(context)) }
     var status by remember { mutableStateOf(loadCachedStatus(context) ?: TrainingStatus()) }
+    var hasFreshStatus by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var testMessage by rememberSaveable { mutableStateOf("") }
@@ -321,8 +340,8 @@ private fun MonitorRoot() {
         if (granted) {
             notificationEnabled = true
             saveNotificationEnabled(context, true)
-            startTrainingNotificationService(context)
-            testMessage = "通知已开启"
+            syncTrainingNotificationService(context, status, privacyAccepted && hasFreshStatus)
+            testMessage = "通知已开启，训练中才会显示到通知栏"
         } else {
             notificationEnabled = false
             saveNotificationEnabled(context, false)
@@ -335,17 +354,28 @@ private fun MonitorRoot() {
         val normalizedUrl = normalizeBaseUrl(url)
         if (normalizedUrl.isBlank()) {
             error = "请先在设置里填写后端地址"
+            hasFreshStatus = false
+            stopTrainingNotificationService(context)
             return
         }
 
         isRefreshing = true
         try {
             val raw = fetchStatusJson(client, normalizedUrl, token)
-            status = parseTrainingStatus(JSONObject(raw))
+            val previousStatus = status
+            val nextStatus = parseTrainingStatus(JSONObject(raw))
+            status = nextStatus
+            hasFreshStatus = true
             saveCachedStatus(context, raw)
+            if (notificationEnabled && privacyAccepted && nextStatus.status == "finished" && previousStatus.status == "training") {
+                showFinishedTrainingNotification(context, nextStatus)
+            }
+            syncTrainingNotificationService(context, nextStatus, notificationEnabled && privacyAccepted)
             error = null
         } catch (exc: Exception) {
             error = exc.message ?: "连接失败"
+            hasFreshStatus = false
+            stopTrainingNotificationService(context)
         } finally {
             isRefreshing = false
         }
@@ -359,12 +389,19 @@ private fun MonitorRoot() {
         }
     }
 
-    LaunchedEffect(notificationEnabled, savedUrl, savedToken, selectedMetricsText, refreshSeconds, privacyAccepted) {
-        if (notificationEnabled && privacyAccepted) {
-            startTrainingNotificationService(context)
-        } else {
-            stopTrainingNotificationService(context)
-        }
+    LaunchedEffect(
+        notificationEnabled,
+        savedUrl,
+        savedToken,
+        selectedMetricsText,
+        refreshSeconds,
+        privacyAccepted,
+        status.status,
+        status.epoch,
+        status.totalEpochs,
+        hasFreshStatus,
+    ) {
+        syncTrainingNotificationService(context, status, notificationEnabled && privacyAccepted && hasFreshStatus)
     }
 
     val selectedMetrics = parseMetricList(selectedMetricsText)
@@ -419,8 +456,8 @@ private fun MonitorRoot() {
                                 if (hasNotificationPermission(context)) {
                                     notificationEnabled = true
                                     saveNotificationEnabled(context, true)
-                                    startTrainingNotificationService(context)
-                                    testMessage = "通知已开启"
+                                    syncTrainingNotificationService(context, status, privacyAccepted && hasFreshStatus)
+                                    testMessage = "通知已开启，训练中才会显示到通知栏"
                                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 }
@@ -434,6 +471,7 @@ private fun MonitorRoot() {
                         onClearCachedData = {
                             clearCachedStatus(context)
                             status = TrainingStatus()
+                            hasFreshStatus = false
                             error = null
                             testMessage = "本地训练缓存已清除"
                         },
@@ -452,6 +490,8 @@ private fun MonitorRoot() {
                             savedToken = draftToken.trim()
                             saveBaseUrl(context, savedUrl)
                             saveToken(context, savedToken)
+                            hasFreshStatus = false
+                            stopTrainingNotificationService(context)
                             testMessage = "设置已保存"
                         },
                         onTest = {
@@ -2081,6 +2121,9 @@ private fun secureSettingsPreferences(context: Context): SharedPreferences {
 
 private fun startTrainingNotificationService(context: Context) {
     if (!hasNotificationPermission(context)) return
+    if (loadBaseUrl(context).isBlank()) return
+    val cached = loadCachedStatus(context) ?: return
+    if (!shouldShowTrainingNotification(cached)) return
     val intent = Intent(context, TrainingNotificationService::class.java)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         context.startForegroundService(intent)
@@ -2092,6 +2135,30 @@ private fun startTrainingNotificationService(context: Context) {
 
 private fun stopTrainingNotificationService(context: Context) {
     context.stopService(Intent(context, TrainingNotificationService::class.java))
+    notificationManager(context).cancel(TrainingNotificationId)
+}
+
+
+private fun syncTrainingNotificationService(context: Context, status: TrainingStatus, enabled: Boolean) {
+    if (enabled && shouldShowTrainingNotification(status)) {
+        startTrainingNotificationService(context)
+    } else {
+        stopTrainingNotificationService(context)
+    }
+}
+
+
+private fun shouldShowTrainingNotification(status: TrainingStatus): Boolean {
+    return status.status == "training"
+}
+
+
+private fun showFinishedTrainingNotification(context: Context, status: TrainingStatus) {
+    if (!hasNotificationPermission(context)) return
+    notificationManager(context).notify(
+        TrainingFinishedNotificationId,
+        buildFinishedNotification(context, status),
+    )
 }
 
 

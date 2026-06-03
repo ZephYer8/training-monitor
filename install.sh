@@ -24,6 +24,9 @@ ARCHIVE_PATH="$REPO_URL/archive/refs/heads/$REF.tar.gz"
 ARCHIVE_URLS="${TRAINING_MONITOR_ARCHIVE_URLS:-$ARCHIVE_PATH}"
 ARCHIVE_FILE="$TMP_DIR/source.tar.gz"
 
+echo "[training-monitor] repository: $REPO_URL"
+echo "[training-monitor] ref: $REF"
+
 download_archive() {
     local url
     for url in $ARCHIVE_URLS; do
@@ -50,5 +53,9 @@ download_archive || {
 }
 
 tar -xzf "$ARCHIVE_FILE" -C "$TMP_DIR" --strip-components=1
+[ -f "$TMP_DIR/scripts/monitorctl" ] || {
+    echo "Downloaded package is incomplete: scripts/monitorctl is missing." >&2
+    exit 1
+}
 
 exec bash "$TMP_DIR/scripts/install.sh" "$@"
