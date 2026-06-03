@@ -409,6 +409,21 @@ private fun MonitorRoot() {
                                 stopTrainingNotificationService(context)
                             }
                         },
+                        onClearCachedData = {
+                            clearCachedStatus(context)
+                            status = TrainingStatus()
+                            error = null
+                            testMessage = "本地训练缓存已清除"
+                        },
+                        onClearToken = {
+                            savedToken = ""
+                            draftToken = ""
+                            saveToken(context, "")
+                            notificationEnabled = false
+                            saveNotificationEnabled(context, false)
+                            stopTrainingNotificationService(context)
+                            testMessage = "Token 已清除，通知已停止"
+                        },
                         onSave = {
                             savedUrl = normalizeBaseUrl(draftUrl)
                             draftUrl = savedUrl
@@ -1192,6 +1207,8 @@ private fun SettingsScreen(
     onRefreshSecondsChange: (Int) -> Unit,
     onMetricToggle: (String) -> Unit,
     onNotificationEnabledChange: (Boolean) -> Unit,
+    onClearCachedData: () -> Unit,
+    onClearToken: () -> Unit,
     onSave: () -> Unit,
     onTest: () -> Unit,
 ) {
@@ -1287,6 +1304,26 @@ private fun SettingsScreen(
             )
         }
 
+        SettingsCard(title = "隐私与权限") {
+            Text("作者：Zephyer", fontWeight = FontWeight.SemiBold)
+            Text(
+                "仅使用网络访问你配置的训练监控后端；开启通知后会使用通知和前台服务权限，用于通知栏、锁屏训练状态和训练完成提醒。",
+                color = Color(0xFF6B7280),
+            )
+            Text(
+                "本机保存内容包括服务器地址、加密 Token、刷新间隔、勾选指标和最后一次训练状态缓存；不读取通讯录、定位、相册、麦克风或摄像头。",
+                color = Color(0xFF6B7280),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = onClearCachedData, modifier = Modifier.weight(1f)) {
+                    Text("清除训练缓存")
+                }
+                OutlinedButton(onClick = onClearToken, modifier = Modifier.weight(1f)) {
+                    Text("清除 Token")
+                }
+            }
+        }
+
         SettingsCard(title = "显示指标") {
             Text("这里只显示服务器已经检测到的指标；勾选后会出现在总览、曲线和通知中。", color = Color(0xFF6B7280))
             if (metricOptions.isEmpty()) {
@@ -1304,6 +1341,7 @@ private fun SettingsScreen(
 
         SettingsCard(title = "关于应用") {
             Text("训迹 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
+            Text("作者：Zephyer", color = Color(0xFF6B7280))
             Text("包名：${context.packageName}", color = Color(0xFF6B7280))
             Text(
                 "本应用只连接你配置的训练监控后端，Token 加密保存在本机，不采集通讯录、定位、相册等个人信息。",
@@ -1836,6 +1874,14 @@ private fun saveCachedStatus(context: Context, raw: String) {
     settingsPreferences(context)
         .edit()
         .putString("cached_status_json", raw)
+        .apply()
+}
+
+
+private fun clearCachedStatus(context: Context) {
+    settingsPreferences(context)
+        .edit()
+        .remove("cached_status_json")
         .apply()
 }
 

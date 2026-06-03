@@ -1,5 +1,7 @@
 # Training Monitor
 
+作者：Zephyer
+
 Training Monitor 是一个轻量级深度学习训练监控工具。它由两部分组成：
 
 - 服务器端监控服务：运行在训练服务器上，读取训练日志或接收训练脚本上报。
@@ -523,6 +525,7 @@ training-monitor connection
 - `/api/status` 和 `/api/reset` 必须带正确 `X-Monitor-Token`。
 - token、配置文件、状态文件默认按当前用户私有权限保存。
 - App 使用 Android Keystore 加密保存 token，并关闭系统备份。
+- App 设置页提供“隐私与权限”说明，并支持清除训练缓存、清除本机 Token。
 - 默认不启用浏览器跨域访问；如果你要做 Web 前端，再配置 `CORS_ORIGINS`。
 
 ## 14. 更新版本

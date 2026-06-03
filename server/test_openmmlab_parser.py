@@ -1,5 +1,6 @@
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from contextlib import contextmanager
+import shutil
 
 from auto_watch import latest_files, parse_file
 from openmmlab_log import best_row, metric_should_minimize, parse_openmmlab_history
@@ -10,10 +11,22 @@ def write(path: Path, text: str) -> Path:
     return path
 
 
+@contextmanager
+def test_dir(name: str):
+    root = Path(__file__).resolve().parent / ".test-tmp" / name
+    if root.exists():
+        shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_mmdetection_text_log() -> None:
-    with TemporaryDirectory() as tmp:
+    with test_dir("mmdetection") as tmp:
         log_path = write(
-            Path(tmp) / "20260602.log",
+            tmp / "20260602.log",
             """
             max_epochs = 12
             06/02 20:00:00 - mmengine - INFO - Epoch(train) [2][50/100] lr: 1e-4 eta: 00:10:00 loss_cls: 0.8 loss_bbox: 0.3 loss: 1.1
@@ -32,9 +45,9 @@ def test_mmdetection_text_log() -> None:
 
 
 def test_mmengine_json_log() -> None:
-    with TemporaryDirectory() as tmp:
+    with test_dir("mmengine-json") as tmp:
         json_path = write(
-            Path(tmp) / "20260602.json",
+            tmp / "20260602.json",
             """
             {"mode":"train","epoch":1,"iter":50,"loss":1.2,"lr":0.001}
             {"mode":"val","epoch":1,"mIoU":0.756,"aAcc":0.88}
@@ -52,9 +65,9 @@ def test_mmengine_json_log() -> None:
 
 
 def test_mmpose_metrics_and_minimize() -> None:
-    with TemporaryDirectory() as tmp:
+    with test_dir("mmpose") as tmp:
         log_path = write(
-            Path(tmp) / "pose.log",
+            tmp / "pose.log",
             """
             06/02 20:02:00 - mmengine - INFO - Epoch(val) [3][10/10] coco/AP: 0.721 PCK: 0.887 AUC: 0.665 NME: 0.045
             """,
@@ -69,9 +82,9 @@ def test_mmpose_metrics_and_minimize() -> None:
 
 
 def test_mmagic_mmocr_mmtracking_metrics() -> None:
-    with TemporaryDirectory() as tmp:
+    with test_dir("mixed") as tmp:
         log_path = write(
-            Path(tmp) / "mixed.log",
+            tmp / "mixed.log",
             """
             Epoch(val) [5][10/10] PSNR: 31.42 SSIM: 0.921 FID: 18.4
             Epoch(val) [6][10/10] hmean: 0.823 word_acc: 0.771 MOTA: 0.668 IDF1: 0.701
@@ -89,8 +102,7 @@ def test_mmagic_mmocr_mmtracking_metrics() -> None:
 
 
 def test_auto_watch_skips_unparseable_latest_file() -> None:
-    with TemporaryDirectory() as tmp:
-        root = Path(tmp)
+    with test_dir("auto-watch") as root:
         write(root / "train.log", "Epoch(val) [4][5/5] mIoU: 0.79")
         junk = write(root / "latest.json", '{"config": "not metrics"}')
         junk.touch()
