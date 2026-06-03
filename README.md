@@ -617,13 +617,13 @@ rm -f ~/.local/bin/training-monitor
 
 ## 17. 上架前清单
 
-当前代码已经具备测试 APK、服务端安装脚本、Token 鉴权、App 本地加密保存 Token、通知权限说明、离线缓存和 OpenMMLab 常见日志自动识别能力。正式提交应用市场前，还需要补齐这些外部材料：
+当前代码已经具备测试 APK、服务端安装脚本、Token 鉴权、App 本地加密保存 Token、首次使用隐私提示、通知权限说明、离线缓存和 OpenMMLab 常见日志自动识别能力。正式提交应用市场前，还需要补齐这些外部材料：
 
 - 正式签名：在 GitHub Secrets 配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，重新打包后得到正式 release APK。未配置这些密钥时，GitHub Release 会生成测试 APK，并同时上传 `training-monitor-build-info.txt` 标明 `market_ready=false`，不要用于应用市场提交。
 - 隐私政策 URL：应用市场通常要求填写可公开访问的隐私政策链接，且 App 内应能方便访问隐私与权限说明。
 - App 备案：如果公开向中国大陆用户分发，按应用市场和接入服务商要求完成 APP 备案或相关主体信息提交。
 - 主体资料：准备开发者姓名或主体名称、联系方式、应用名称“训迹”、作者“Zephyer”、包名 `com.modeltest.monitor`。
-- 权限说明：说明只使用网络、通知、前台服务权限；不读取通讯录、定位、相册、麦克风、摄像头。
+- 权限说明：首次使用时 App 会展示隐私与权限提示；说明只使用网络、通知、前台服务权限；不读取通讯录、定位、相册、麦克风、摄像头。
 - 数据说明：说明本机保存服务器地址、加密 Token、刷新间隔、勾选指标和最后一次训练状态缓存。
 - 用户权利入口：App 设置页已提供清除训练缓存、清除本机 Token；如果后续增加账号体系，再补注销账号入口。
 - 真机测试：至少在一台 Android 13+ 手机和一台 Android 12 或以下手机上测试安装、通知权限、锁屏通知、服务器连接、断网缓存。

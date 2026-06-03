@@ -1,6 +1,7 @@
 package com.modeltest.monitor
 
 import android.Manifest
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -116,6 +117,7 @@ private const val SettingsPrefs = "settings"
 private const val SecureSettingsPrefs = "secure_settings"
 private const val TokenKey = "token"
 private const val NotificationEnabledKey = "notification_enabled"
+private const val PrivacyAcceptedKey = "privacy_accepted"
 private const val TrainingNotificationId = 4100
 private const val TrainingFinishedNotificationId = 4101
 private const val TrainingChannelId = "training_status_lock_screen"
@@ -308,6 +310,7 @@ private fun MonitorRoot() {
     var refreshSeconds by rememberSaveable { mutableStateOf(loadRefreshSeconds(context)) }
     var selectedMetricsText by rememberSaveable { mutableStateOf(loadSelectedMetricsText(context)) }
     var notificationEnabled by rememberSaveable { mutableStateOf(loadNotificationEnabled(context)) }
+    var privacyAccepted by rememberSaveable { mutableStateOf(loadPrivacyAccepted(context)) }
     var status by remember { mutableStateOf(loadCachedStatus(context) ?: TrainingStatus()) }
     var error by remember { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -348,15 +351,16 @@ private fun MonitorRoot() {
         }
     }
 
-    LaunchedEffect(savedUrl, savedToken, refreshSeconds) {
+    LaunchedEffect(savedUrl, savedToken, refreshSeconds, privacyAccepted) {
+        if (!privacyAccepted) return@LaunchedEffect
         while (true) {
             refreshOnce()
             delay(refreshSeconds * 1_000L)
         }
     }
 
-    LaunchedEffect(notificationEnabled, savedUrl, savedToken, selectedMetricsText, refreshSeconds) {
-        if (notificationEnabled) {
+    LaunchedEffect(notificationEnabled, savedUrl, savedToken, selectedMetricsText, refreshSeconds, privacyAccepted) {
+        if (notificationEnabled && privacyAccepted) {
             startTrainingNotificationService(context)
         } else {
             stopTrainingNotificationService(context)
@@ -474,6 +478,21 @@ private fun MonitorRoot() {
             BottomTabs(
                 current = currentPage,
                 onChange = { page = it.name },
+            )
+        }
+
+        if (!privacyAccepted) {
+            PrivacyConsentDialog(
+                onAccept = {
+                    privacyAccepted = true
+                    savePrivacyAccepted(context, true)
+                    testMessage = "已同意隐私与权限说明"
+                },
+                onDecline = {
+                    savePrivacyAccepted(context, false)
+                    stopTrainingNotificationService(context)
+                    (context as? Activity)?.finish()
+                },
             )
         }
     }
@@ -1386,6 +1405,37 @@ private fun SettingsScreen(
 
 
 @Composable
+private fun PrivacyConsentDialog(
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("隐私与权限提示") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("欢迎使用训迹。继续使用前，请先了解本应用如何处理数据。")
+                Text("本应用只连接你配置的训练监控后端，用于显示训练进度、指标曲线、Best 指标、ETA 和训练完成提醒。")
+                Text("本机保存服务器地址、加密 Token、刷新间隔、勾选指标和最后一次训练状态缓存。")
+                Text("应用仅使用网络、通知和前台服务权限；不读取通讯录、定位、相册、麦克风或摄像头，不接入广告 SDK。")
+                Text("你可以在设置页随时清除训练缓存和本机 Token。")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onAccept) {
+                Text("同意并继续")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDecline) {
+                Text("暂不同意")
+            }
+        },
+    )
+}
+
+
+@Composable
 private fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1988,6 +2038,19 @@ private fun saveNotificationEnabled(context: Context, enabled: Boolean) {
     settingsPreferences(context)
         .edit()
         .putBoolean(NotificationEnabledKey, enabled)
+        .apply()
+}
+
+
+private fun loadPrivacyAccepted(context: Context): Boolean {
+    return settingsPreferences(context).getBoolean(PrivacyAcceptedKey, false)
+}
+
+
+private fun savePrivacyAccepted(context: Context, accepted: Boolean) {
+    settingsPreferences(context)
+        .edit()
+        .putBoolean(PrivacyAcceptedKey, accepted)
         .apply()
 }
 
