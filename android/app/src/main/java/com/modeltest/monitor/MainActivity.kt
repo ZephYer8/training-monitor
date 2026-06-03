@@ -175,7 +175,7 @@ class TrainingNotificationService : Service() {
 
     private suspend fun pollTrainingStatus() {
         while (true) {
-            val delaySeconds = loadRefreshSeconds(this@TrainingNotificationService).coerceIn(2, 60)
+            val delaySeconds = loadRefreshSeconds(this@TrainingNotificationService).coerceIn(1, 60)
             val url = loadBaseUrl(this@TrainingNotificationService)
             val token = loadToken(this@TrainingNotificationService)
 
@@ -2287,6 +2287,7 @@ private fun buildTrainingNotification(
     status: TrainingStatus,
     content: String,
 ): Notification {
+    val progressPercent = notificationProgressPercent(status)
     val notification = Notification.Builder(context, TrainingChannelId)
         .setSmallIcon(R.drawable.ic_notification)
         .setColor(0xFF2563EB.toInt())
@@ -2294,6 +2295,8 @@ private fun buildTrainingNotification(
         .setContentText(content)
         .setStyle(Notification.BigTextStyle().bigText(content))
         .setContentIntent(mainActivityPendingIntent(context))
+        .setSubText(progressPercent?.let { "$it%" })
+        .setNumber(progressPercent ?: 0)
         .setOngoing(status.status == "training")
         .setOnlyAlertOnce(true)
         .setShowWhen(true)
@@ -2356,9 +2359,10 @@ private fun notificationTitle(status: TrainingStatus): String {
     } else {
         status.epoch.takeIf { it > 0 }?.toString() ?: "--"
     }
+    val progressText = notificationProgressPercent(status)?.let { " · ${it}%" } ?: ""
     return when (status.status) {
-        "training" -> "训练中 · Epoch $epochText"
-        "finished" -> "训练完成 · Epoch $epochText"
+        "training" -> "训练中$progressText · Epoch $epochText"
+        "finished" -> "训练完成$progressText · Epoch $epochText"
         "error" -> "训练异常 · Epoch $epochText"
         else -> "等待训练数据"
     }
@@ -2368,20 +2372,37 @@ private fun notificationTitle(status: TrainingStatus): String {
 private fun notificationSummary(context: Context, status: TrainingStatus): String {
     val metrics = notificationMetrics(context, status)
     val metricText = metrics.joinToString(" · ") { metric ->
+        val current = status.latestMetricValue(metric)
         val best = status.bestMetrics[metric]
         val bestEpoch = status.bestEpochs[metric]
-        if (best != null) {
-            "Best ${metricDisplayName(metric)} ${formatMetric(best)}${bestEpoch?.let { " @ $it" } ?: ""}"
-        } else {
-            "${metricDisplayName(metric)} ${formatMetric(status.latestMetricValue(metric))}"
+        when {
+            current != null && best != null -> {
+                "${metricDisplayName(metric)} ${formatMetric(current)} · Best ${formatMetric(best)}${bestEpoch?.let { " @ $it" } ?: ""}"
+            }
+            best != null -> {
+                "Best ${metricDisplayName(metric)} ${formatMetric(best)}${bestEpoch?.let { " @ $it" } ?: ""}"
+            }
+            else -> {
+                "${metricDisplayName(metric)} ${formatMetric(current)}"
+            }
         }
     }
     val etaText = status.etaSeconds?.let { " · ETA ${formatEta(it)}" } ?: ""
+    val progressText = notificationProgressPercent(status)?.let { "Progress $it%" }
     val summary = listOfNotNull(
+        progressText,
         metricText.ifBlank { null },
         if (status.totalEpochs > 0) "Epoch ${status.epoch}/${status.totalEpochs}" else null,
     ).joinToString(" · ") + etaText
     return summary.ifBlank { "等待训练数据" }
+}
+
+
+private fun notificationProgressPercent(status: TrainingStatus): Int? {
+    if (status.totalEpochs <= 0) return null
+    return ((status.epoch.toDouble() / status.totalEpochs.toDouble()) * 100)
+        .toInt()
+        .coerceIn(0, 100)
 }
 
 
