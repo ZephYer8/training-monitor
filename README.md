@@ -9,7 +9,7 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 当前版本适合这些场景：
 
-- OpenMMLab / MMEngine：自动读取 `.log`、`.json`、`.jsonl` 里的 `loss`、`mIoU`、`BBox mAP`、`Top1 Acc`、`PCK` 等常见指标。
+- OpenMMLab / MMEngine：自动读取 `.log`、`.json`、`.jsonl` 里的 `loss`、`mIoU`、`BBox mAP`、`NDS`、`PQ`、`Top1 Acc`、`PCK` 等常见指标。
 - YOLO / Ultralytics：自动读取 `results.csv` 里的 `mAP`。
 - 其他 PyTorch 项目：可以用通用 HTTP 接口或 Python helper 主动上报。
 - 任意服务器：只要能运行 Python，并且手机能访问服务器的后端地址即可。
@@ -129,7 +129,7 @@ training-monitor setup
 ```text
 Port [6006]:
 Public URL [自动检测到的地址]:
-Log roots [/root/mmdetection* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmagic* /root/autodl-tmp /root/workspace /root/runs]:
+Log roots [/root/mmdetection* /root/mmdetection3d* /root/mmdet3d* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmselfsup* /root/mmyolo* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmaction2* /root/mmagic* /root/mmediting* /root/mmgeneration* /root/mmtracking* /root/mmtrack* /root/mmrazor* /root/mmhuman3d* /root/mmfewshot* /root/mmdeploy* /root/work_dirs /root/*/work_dirs /root/autodl-tmp/*/work_dirs /root/workspace/*/work_dirs /root/autodl-tmp /root/workspace /root/runs]:
 Log type auto/openmmlab/yolo [auto]:
 Auto watch 1/0 [1]:
 ```
@@ -311,14 +311,31 @@ training-monitor status
 
 ```text
 /root/mmdetection*
+/root/mmdetection3d*
+/root/mmdet3d*
 /root/mmsegmentation*
 /root/mmclassification*
 /root/mmpretrain*
+/root/mmselfsup*
+/root/mmyolo*
 /root/mmpose*
 /root/mmrotate*
 /root/mmocr*
 /root/mmaction*
+/root/mmaction2*
 /root/mmagic*
+/root/mmediting*
+/root/mmgeneration*
+/root/mmtracking*
+/root/mmtrack*
+/root/mmrazor*
+/root/mmhuman3d*
+/root/mmfewshot*
+/root/mmdeploy*
+/root/work_dirs
+/root/*/work_dirs
+/root/autodl-tmp/*/work_dirs
+/root/workspace/*/work_dirs
 /root/autodl-tmp
 /root/workspace
 /root/runs
@@ -328,7 +345,7 @@ training-monitor status
 
 当前支持：
 
-- OpenMMLab / MMEngine `.log`、`.json`、`.jsonl`：读取 `loss`、`mIoU`、`mDice`、`BBox mAP`、`Segm mAP`、`Top1 Acc`、`PCK`、`Hmean` 等常见指标
+- OpenMMLab / MMEngine `.log`、`.json`、`.jsonl`：读取 `loss`、`mIoU`、`mDice`、`BBox mAP`、`Segm mAP`、`NDS`、`PQ`、`Top1 Acc`、`PCK`、`Hmean`、`MOTA`、`PSNR` 等常见指标
 - `results.csv`：主要用于 YOLO / Ultralytics，读取 `mAP`
 - 文件名包含 `result` / `metric` / `progress` 的 `.csv`
 

@@ -20,6 +20,7 @@ STATE_FILE="$BASE/state.json"
 LOG_DIR="$BASE/logs"
 BACKEND_PID="$BASE/backend.pid"
 WATCHER_PID="$BASE/watcher.pid"
+DEFAULT_LOG_ROOTS="/root/mmdetection* /root/mmdetection3d* /root/mmdet3d* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmselfsup* /root/mmyolo* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmaction2* /root/mmagic* /root/mmediting* /root/mmgeneration* /root/mmtracking* /root/mmtrack* /root/mmrazor* /root/mmhuman3d* /root/mmfewshot* /root/mmdeploy* /root/work_dirs /root/*/work_dirs /root/autodl-tmp/*/work_dirs /root/workspace/*/work_dirs /root/autodl-tmp /root/workspace /root/runs"
 
 mkdir -p "$LOG_DIR"
 chmod 700 "$BASE" "$LOG_DIR" 2>/dev/null || true
@@ -34,7 +35,7 @@ write_default_config() {
     cat > "$CONFIG_FILE" <<EOF
 PORT=6006
 PUBLIC_URL=
-LOG_ROOTS=/root/mmdetection* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmagic* /root/autodl-tmp /root/workspace /root/runs
+LOG_ROOTS=$DEFAULT_LOG_ROOTS
 LOG_TYPE=auto
 AUTO_WATCH=1
 TOTAL_EPOCHS=0
@@ -49,12 +50,17 @@ load_config() {
 
     local old_log_roots="/root/mmsegmentation* /root/autodl-tmp /root/workspace /root/runs /root"
     if [ "$(read_config_value LOG_ROOTS "")" = "$old_log_roots" ]; then
-        save_config_value LOG_ROOTS "/root/mmdetection* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmagic* /root/autodl-tmp /root/workspace /root/runs"
+        save_config_value LOG_ROOTS "$DEFAULT_LOG_ROOTS"
+    fi
+
+    local previous_default="/root/mmdetection* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmagic* /root/autodl-tmp /root/workspace /root/runs"
+    if [ "$(read_config_value LOG_ROOTS "")" = "$previous_default" ]; then
+        save_config_value LOG_ROOTS "$DEFAULT_LOG_ROOTS"
     fi
 
     PORT="${TRAINING_MONITOR_PORT:-$(read_config_value PORT 6006)}"
     PUBLIC_URL="$(read_config_value PUBLIC_URL "")"
-    LOG_ROOTS="$(read_config_value LOG_ROOTS "/root/mmdetection* /root/mmsegmentation* /root/mmclassification* /root/mmpretrain* /root/mmpose* /root/mmrotate* /root/mmocr* /root/mmaction* /root/mmagic* /root/autodl-tmp /root/workspace /root/runs")"
+    LOG_ROOTS="$(read_config_value LOG_ROOTS "$DEFAULT_LOG_ROOTS")"
     LOG_TYPE="$(read_config_value LOG_TYPE auto)"
     AUTO_WATCH="$(read_config_value AUTO_WATCH 1)"
     TOTAL_EPOCHS="$(read_config_value TOTAL_EPOCHS 0)"

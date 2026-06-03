@@ -101,6 +101,28 @@ def test_mmagic_mmocr_mmtracking_metrics() -> None:
         assert rows[1][4]["IDF1"] == 70.1
 
 
+def test_mmyolo_mmdet3d_reid_panoptic_metrics() -> None:
+    with test_dir("openmmlab-extra") as tmp:
+        json_path = write(
+            tmp / "extra.jsonl",
+            """
+            {"mode":"val","epoch":7,"CocoMetric":{"bbox_mAP":0.456,"bbox_mAP_50":0.705},"NuScenesMetric":{"NDS":0.634,"mATE":0.52},"ReIDMetric":{"mAP":0.671,"Rank-1":0.889}}
+            Epoch(val) [8][1/1] panoptic/PQ: 0.512 panoptic/SQ: 0.811 panoptic/RQ: 0.630
+            """,
+        )
+
+        _, rows = parse_openmmlab_history(json_path, 0)
+        assert rows[0][0] == "BBox mAP"
+        assert round(rows[0][4]["BBox mAP"], 2) == 45.60
+        assert round(rows[0][4]["BBox mAP50"], 2) == 70.50
+        assert round(rows[0][4]["NDS"], 2) == 63.40
+        assert rows[0][4]["mATE"] == 0.52
+        assert round(rows[0][4]["Rank-1"], 2) == 88.90
+        assert metric_should_minimize("mATE")
+        assert rows[1][0] == "PQ"
+        assert round(rows[1][4]["PQ"], 2) == 51.20
+
+
 def test_auto_watch_skips_unparseable_latest_file() -> None:
     with test_dir("auto-watch") as root:
         write(root / "train.log", "Epoch(val) [4][5/5] mIoU: 0.79")
@@ -124,5 +146,6 @@ if __name__ == "__main__":
     test_mmengine_json_log()
     test_mmpose_metrics_and_minimize()
     test_mmagic_mmocr_mmtracking_metrics()
+    test_mmyolo_mmdet3d_reid_panoptic_metrics()
     test_auto_watch_skips_unparseable_latest_file()
     print("openmmlab parser tests ok")

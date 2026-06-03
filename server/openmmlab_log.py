@@ -24,10 +24,14 @@ PRIMARY_METRICS = (
     "mAcc",
     "aAcc",
     "BBox mAP",
+    "BBox mAP50",
     "Segm mAP",
+    "Segm mAP50",
     "mAP",
     "mAP50",
     "AP",
+    "NDS",
+    "PQ",
     "PCK",
     "Accuracy",
     "Top1 Acc",
@@ -219,14 +223,30 @@ def metric_label(key: str) -> Optional[str]:
         "map_50": "mAP50",
         "bbox_map": "BBox mAP",
         "bbox_map_50": "BBox mAP50",
+        "bbox_map_75": "BBox mAP75",
+        "bbox_map_s": "BBox mAP-S",
+        "bbox_map_m": "BBox mAP-M",
+        "bbox_map_l": "BBox mAP-L",
         "coco/bbox_map": "BBox mAP",
         "coco/bbox_map_50": "BBox mAP50",
+        "coco/bbox_map_75": "BBox mAP75",
         "segm_map": "Segm mAP",
         "segm_map_50": "Segm mAP50",
+        "segm_map_75": "Segm mAP75",
+        "segm_map_s": "Segm mAP-S",
+        "segm_map_m": "Segm mAP-M",
+        "segm_map_l": "Segm mAP-L",
         "coco/segm_map": "Segm mAP",
         "coco/segm_map_50": "Segm mAP50",
+        "coco/segm_map_75": "Segm mAP75",
         "ap": "AP",
         "ar": "AR",
+        "pq": "PQ",
+        "sq": "SQ",
+        "rq": "RQ",
+        "panoptic/pq": "PQ",
+        "panoptic/sq": "SQ",
+        "panoptic/rq": "RQ",
         "pck": "PCK",
         "auc": "AUC",
         "hmean": "Hmean",
@@ -241,16 +261,38 @@ def metric_label(key: str) -> Optional[str]:
         "idf1": "IDF1",
         "idp": "IDP",
         "idr": "IDR",
+        "nds": "NDS",
+        "mate": "mATE",
+        "mase": "mASE",
+        "maoe": "mAOE",
+        "mave": "mAVE",
+        "maae": "mAAE",
         "mae": "MAE",
         "rmse": "RMSE",
         "nme": "NME",
         "epe": "EPE",
+        "minp": "mINP",
+        "rank_1": "Rank-1",
+        "rank_5": "Rank-5",
+        "rank_10": "Rank-10",
     }
     if lowered in known:
         return known[lowered]
     if normalized in known:
         return known[normalized]
 
+    if "bbox_map_50" in normalized:
+        return "BBox mAP50"
+    if "bbox_map_75" in normalized:
+        return "BBox mAP75"
+    if "bbox_map" in normalized:
+        return "BBox mAP"
+    if "segm_map_50" in normalized:
+        return "Segm mAP50"
+    if "segm_map_75" in normalized:
+        return "Segm mAP75"
+    if "segm_map" in normalized:
+        return "Segm mAP"
     if "map_50" in normalized or normalized.endswith("map50"):
         return "mAP50"
     if normalized.endswith("_map") or normalized.endswith("/map"):
@@ -266,7 +308,10 @@ def metric_label(key: str) -> Optional[str]:
 
 def normalize_metric_value(name: str, value: float) -> float:
     lowered = name.lower()
-    minimize = any(word in lowered for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid"))
+    minimize = any(
+        word in lowered
+        for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid", "mate", "mase", "maoe", "mave", "maae")
+    )
     if not minimize and 0 <= value <= 1:
         return value * 100
     return value
@@ -323,7 +368,10 @@ def best_row(rows: List[Metric]) -> Metric:
 
 def metric_should_minimize(name: str) -> bool:
     lowered = name.lower()
-    return any(word in lowered for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid"))
+    return any(
+        word in lowered
+        for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid", "mate", "mase", "maoe", "mave", "maae")
+    )
 
 
 def flatten_json(data: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
