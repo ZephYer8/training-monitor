@@ -17,6 +17,8 @@ import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -103,16 +105,9 @@ import kotlin.math.max
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestTrainingNotificationPermission()
         setContent {
             TrainingMonitorApp()
         }
-    }
-
-    private fun requestTrainingNotificationPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
-        requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NotificationPermissionRequestCode)
     }
 }
 
@@ -121,7 +116,6 @@ private const val SettingsPrefs = "settings"
 private const val SecureSettingsPrefs = "secure_settings"
 private const val TokenKey = "token"
 private const val NotificationEnabledKey = "notification_enabled"
-private const val NotificationPermissionRequestCode = 3001
 private const val TrainingNotificationId = 4100
 private const val TrainingFinishedNotificationId = 4101
 private const val TrainingChannelId = "training_status_lock_screen"
@@ -318,6 +312,21 @@ private fun MonitorRoot() {
     var error by remember { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var testMessage by rememberSaveable { mutableStateOf("") }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            notificationEnabled = true
+            saveNotificationEnabled(context, true)
+            startTrainingNotificationService(context)
+            testMessage = "通知已开启"
+        } else {
+            notificationEnabled = false
+            saveNotificationEnabled(context, false)
+            stopTrainingNotificationService(context)
+            testMessage = "未授予通知权限，通知未开启"
+        }
+    }
 
     suspend fun refreshOnce(url: String = savedUrl, token: String = savedToken) {
         val normalizedUrl = normalizeBaseUrl(url)
@@ -402,12 +411,20 @@ private fun MonitorRoot() {
                             saveSelectedMetricsText(context, selectedMetricsText)
                         },
                         onNotificationEnabledChange = {
-                            notificationEnabled = it
-                            saveNotificationEnabled(context, it)
                             if (it) {
-                                startTrainingNotificationService(context)
+                                if (hasNotificationPermission(context)) {
+                                    notificationEnabled = true
+                                    saveNotificationEnabled(context, true)
+                                    startTrainingNotificationService(context)
+                                    testMessage = "通知已开启"
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
                             } else {
+                                notificationEnabled = false
+                                saveNotificationEnabled(context, false)
                                 stopTrainingNotificationService(context)
+                                testMessage = "通知已关闭"
                             }
                         },
                         onClearCachedData = {
