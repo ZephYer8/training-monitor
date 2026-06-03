@@ -1014,14 +1014,18 @@ private fun MetricCard(
             containerColor = if (selected) Color(0xFFEFF6FF) else Color.White,
         ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-        border = if (selected) BorderStroke(1.5.dp, Color(0xFF2563EB)) else null,
         modifier = modifier.clickable(onClick = onClick),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(title, color = Color(0xFF6B7280), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                title,
+                color = if (selected) Color(0xFF2563EB) else Color(0xFF6B7280),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(
                 text = formatMetric(current),
                 style = MaterialTheme.typography.titleLarge,
