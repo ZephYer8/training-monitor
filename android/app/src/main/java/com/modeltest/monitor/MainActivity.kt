@@ -2053,7 +2053,8 @@ private fun buildTrainingNotification(
     content: String,
 ): Notification {
     val notification = Notification.Builder(context, TrainingChannelId)
-        .setSmallIcon(android.R.drawable.stat_notify_sync)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setColor(0xFF2563EB.toInt())
         .setContentTitle(notificationTitle(status))
         .setContentText(content)
         .setStyle(Notification.BigTextStyle().bigText(content))
@@ -2083,7 +2084,8 @@ private fun buildTrainingNotification(
 private fun buildFinishedNotification(context: Context, status: TrainingStatus): Notification {
     val content = notificationSummary(context, status)
     return Notification.Builder(context, TrainingFinishedChannelId)
-        .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setColor(0xFF16A34A.toInt())
         .setContentTitle("训练完成")
         .setContentText(content)
         .setStyle(Notification.BigTextStyle().bigText(content))
