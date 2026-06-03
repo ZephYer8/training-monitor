@@ -57,6 +57,14 @@ def parse_file(path: Path, total_epochs_fallback: int) -> ParsedFile:
     return total_epochs, best_row(rows), rows[-1], rows
 
 
+def safe_parse_file(path: Path, total_epochs_fallback: int) -> Optional[ParsedFile]:
+    try:
+        return parse_file(path, total_epochs_fallback)
+    except Exception as exc:
+        print(f"skip unreadable training log: {path} ({exc})", flush=True)
+        return None
+
+
 def parse_history(path: Path, total_epochs_fallback: int) -> Tuple[int, List[Metric]]:
     if path.suffix == ".csv":
         return parse_csv_history(path, total_epochs_fallback)
@@ -216,6 +224,7 @@ def main() -> None:
     parser.add_argument("--token", default=os.getenv("MONITOR_TOKEN", ""))
     parser.add_argument("--total-epochs", type=int, default=0)
     parser.add_argument("--interval", type=float, default=10.0)
+    parser.add_argument("--once", action="store_true", help="scan once and print parse diagnostics")
     parser.add_argument(
         "--roots",
         nargs="*",
@@ -253,6 +262,25 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if args.once:
+        candidates = latest_files(args.roots)[:20]
+        if not candidates:
+            print("no supported training log found", flush=True)
+            return
+        for candidate in candidates:
+            parsed = safe_parse_file(candidate, args.total_epochs)
+            if parsed is None:
+                continue
+            total_epochs, best, latest, rows = parsed
+            if latest is None:
+                print(f"found but no metrics: {candidate}", flush=True)
+                continue
+            print(
+                f"ok file={candidate} epoch={latest[1]}/{total_epochs} primary={latest[0]} value={latest[2]:.4f} metrics={sorted(latest[4])}",
+                flush=True,
+            )
+        return
+
     monitor = TrainingMonitor(args.server_url, token=args.token)
     active_file: Optional[Path] = None
     last_sent: Optional[Tuple[Path, int, Tuple[Tuple[str, float], ...], Optional[int]]] = None
@@ -260,7 +288,10 @@ def main() -> None:
     while True:
         parsed_file = None
         for candidate in latest_files(args.roots):
-            total_epochs, best, latest, rows = parse_file(candidate, args.total_epochs)
+            parsed = safe_parse_file(candidate, args.total_epochs)
+            if parsed is None:
+                continue
+            total_epochs, best, latest, rows = parsed
             if latest is not None:
                 parsed_file = candidate, total_epochs, best, latest, rows
                 break

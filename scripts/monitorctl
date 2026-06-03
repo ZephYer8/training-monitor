@@ -400,6 +400,19 @@ logs() {
     tail -n 80 "$LOG_DIR/watcher.log" 2>/dev/null || true
 }
 
+diagnose() {
+    ensure_runtime
+    load_config
+    token_init
+    cd "$SERVER_DIR"
+    # shellcheck disable=SC2086
+    env MONITOR_TOKEN="$(cat "$TOKEN_FILE")" "$VENV_PY" auto_watch.py \
+        --server-url "http://127.0.0.1:$PORT" \
+        --total-epochs "$TOTAL_EPOCHS" \
+        --roots $LOG_ROOTS \
+        --once
+}
+
 case "${1:-help}" in
     token-init) token_init ;;
     start) start ;;
@@ -415,8 +428,9 @@ case "${1:-help}" in
     watch-mmseg) shift; watch_file "$@" ;;
     auto-watch) auto_watch ;;
     auto-mmseg) auto_watch ;;
+    diagnose) diagnose ;;
     logs) logs ;;
     help|*)
-        echo "usage: training-monitor start|stop|restart|status|token|rotate-token|connection|setup|config|watch-file|auto-watch|logs"
+        echo "usage: training-monitor start|stop|restart|status|token|rotate-token|connection|setup|config|watch-file|auto-watch|diagnose|logs"
         ;;
 esac

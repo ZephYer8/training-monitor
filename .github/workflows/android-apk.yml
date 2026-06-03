@@ -82,12 +82,19 @@ jobs:
             } > training-monitor-build-info.txt
           fi
 
+      - name: Build server installer bundle
+        run: |
+          tar --exclude='__pycache__' --exclude='.test-tmp' -czf training-monitor-server.tar.gz install.sh install-server.sh scripts server
+          cp install-server.sh training-monitor-install-server.sh
+
       - uses: actions/upload-artifact@v4
         with:
           name: training-monitor-apk
           path: |
             training-monitor.apk
             training-monitor-build-info.txt
+            training-monitor-server.tar.gz
+            training-monitor-install-server.sh
 
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -95,3 +102,5 @@ jobs:
           files: |
             training-monitor.apk
             training-monitor-build-info.txt
+            training-monitor-server.tar.gz
+            training-monitor-install-server.sh

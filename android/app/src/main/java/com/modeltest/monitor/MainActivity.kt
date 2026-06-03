@@ -282,6 +282,14 @@ data class TrainingStatus(
             else -> null
         }
     }
+
+    fun latestMetricValue(metric: String): Double? {
+        metrics[metric]?.let { return it }
+        for (point in history.asReversed()) {
+            point.metrics[metric]?.let { return it }
+        }
+        return null
+    }
 }
 
 
@@ -426,6 +434,11 @@ private fun MonitorRoot() {
                         isRefreshing = isRefreshing,
                         visibleMetrics = visibleMetrics,
                         onRefresh = { scope.launch { refreshOnce() } },
+                        onMetricSwap = { first, second ->
+                            val next = swapMetricOrder(status, selectedMetrics, visibleMetrics, first, second)
+                            selectedMetricsText = next
+                            saveSelectedMetricsText(context, next)
+                        },
                     )
 
                     AppPage.Charts -> ChartsScreen(
@@ -546,6 +559,7 @@ private fun DashboardScreen(
     isRefreshing: Boolean,
     visibleMetrics: List<String>,
     onRefresh: () -> Unit,
+    onMetricSwap: (String, String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -561,19 +575,19 @@ private fun DashboardScreen(
             onRefresh = onRefresh,
         )
         ProgressHeroCard(status)
-        BestSummaryCard(status)
-        MetricGrid(status, visibleMetrics)
+        BestSummaryCard(status, visibleMetrics)
+        MetricGrid(status, visibleMetrics, onMetricSwap)
         MiniChartCard(status, visibleMetrics)
     }
 }
 
 
 @Composable
-private fun BestSummaryCard(status: TrainingStatus) {
-    val metric = status.primaryMetric()
+private fun BestSummaryCard(status: TrainingStatus, visibleMetrics: List<String>) {
+    val metric = visibleMetrics.firstOrNull() ?: status.primaryMetric()
     val best = metric?.let { status.bestMetrics[it] }
     val bestEpoch = metric?.let { status.bestEpochs[it] }
-    val current = metric?.let { status.metrics[it] }
+    val current = metric?.let { status.latestMetricValue(it) }
 
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
@@ -924,21 +938,53 @@ private fun BuddyCanvas(
 
 
 @Composable
-private fun MetricGrid(status: TrainingStatus, visibleMetrics: List<String>) {
+private fun MetricGrid(
+    status: TrainingStatus,
+    visibleMetrics: List<String>,
+    onMetricSwap: (String, String) -> Unit,
+) {
     if (visibleMetrics.isEmpty()) {
         EmptyCard("还没有指标", "等待训练脚本同步指标后，这里会自动显示。")
         return
     }
 
+    var selectedMetric by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(visibleMetrics) {
+        selectedMetric?.let { metric ->
+            if (metric !in visibleMetrics) {
+                selectedMetric = null
+            }
+        }
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (selectedMetric != null) {
+            Text(
+                text = "已选中 ${metricDisplayName(selectedMetric ?: "")}，再点另一个指标卡即可交换位置",
+                color = Color(0xFF2563EB),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         visibleMetrics.chunked(2).forEach { rowMetrics ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 rowMetrics.forEach { metric ->
                     MetricCard(
                         title = metricDisplayName(metric),
-                        current = status.metrics[metric],
+                        current = status.latestMetricValue(metric),
                         best = status.bestMetrics[metric],
                         bestEpoch = status.bestEpochs[metric],
+                        selected = selectedMetric == metric,
+                        onClick = {
+                            val first = selectedMetric
+                            when {
+                                first == null -> selectedMetric = metric
+                                first == metric -> selectedMetric = null
+                                else -> {
+                                    onMetricSwap(first, metric)
+                                    selectedMetric = null
+                                }
+                            }
+                        },
                         modifier = if (rowMetrics.size == 1) {
                             Modifier.fillMaxWidth()
                         } else {
@@ -958,13 +1004,18 @@ private fun MetricCard(
     current: Double?,
     best: Double?,
     bestEpoch: Int?,
+    selected: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = if (selected) Color(0xFFEFF6FF) else Color.White,
+        ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-        modifier = modifier,
+        border = if (selected) BorderStroke(1.5.dp, Color(0xFF2563EB)) else null,
+        modifier = modifier.clickable(onClick = onClick),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -1656,7 +1707,7 @@ private suspend fun fetchStatusJson(client: OkHttpClient, baseUrl: String, token
 
 
 private fun parseTrainingStatus(json: JSONObject): TrainingStatus {
-    val metricName = json.optString("metric_name", "IoU")
+    val metricName = json.optCleanString("metric_name", "IoU")
     val metrics = json.optJSONObject("metrics").toDoubleMap().toMutableMap()
     val currentMetric = json.optNullableDouble("current_iou")
     if (metrics.isEmpty() && currentMetric != null) {
@@ -1682,7 +1733,7 @@ private fun parseTrainingStatus(json: JSONObject): TrainingStatus {
     )
 
     return TrainingStatus(
-        status = json.optString("status", "idle"),
+        status = json.optCleanString("status", "idle"),
         epoch = json.optInt("epoch", 0),
         totalEpochs = json.optInt("total_epochs", 0),
         metrics = metrics,
@@ -1690,7 +1741,7 @@ private fun parseTrainingStatus(json: JSONObject): TrainingStatus {
         bestEpochs = bestEpochs,
         metricName = metricName,
         etaSeconds = json.optNullableLong("eta_seconds"),
-        updatedAt = json.optString("updated_at", ""),
+        updatedAt = json.optCleanString("updated_at"),
         history = history,
         availableMetrics = availableMetrics,
     )
@@ -1702,7 +1753,7 @@ private fun parseHistory(array: JSONArray?): List<HistoryPoint> {
     val history = mutableListOf<HistoryPoint>()
     for (index in 0 until array.length()) {
         val item = array.optJSONObject(index) ?: continue
-        val metricName = item.optString("metric_name", "IoU")
+        val metricName = item.optCleanString("metric_name", "IoU")
         val metrics = item.optJSONObject("metrics").toDoubleMap().toMutableMap()
         val legacyValue = item.optNullableDouble("iou")
         if (metrics.isEmpty() && legacyValue != null) {
@@ -1711,7 +1762,7 @@ private fun parseHistory(array: JSONArray?): List<HistoryPoint> {
         history += HistoryPoint(
             epoch = item.optInt("epoch", 0),
             metrics = metrics,
-            updatedAt = item.optString("updated_at", ""),
+            updatedAt = item.optCleanString("updated_at"),
         )
     }
     return history
@@ -1772,6 +1823,13 @@ private fun JSONObject.optNullableLong(name: String): Long? {
 }
 
 
+private fun JSONObject.optCleanString(name: String, fallback: String = ""): String {
+    if (!has(name) || isNull(name)) return fallback
+    val value = optString(name, fallback).trim()
+    return if (value.equals("null", ignoreCase = true)) fallback else value
+}
+
+
 private fun chooseVisibleMetrics(status: TrainingStatus, selected: List<String>): List<String> {
     val available = status.metricNames()
     val chosen = resolveSelectedMetrics(status, selected)
@@ -1820,6 +1878,32 @@ private fun mergeMetricOptions(first: List<String>, second: List<String> = empty
 
 private fun parseMetricList(text: String): List<String> {
     return text.split(",").map { it.trim() }.filter { it.isNotBlank() }.distinct()
+}
+
+
+private fun swapMetricOrder(
+    status: TrainingStatus,
+    selected: List<String>,
+    visibleMetrics: List<String>,
+    first: String,
+    second: String,
+): String {
+    val available = status.metricNames()
+    val next = if (selected.isNotEmpty()) {
+        selected.map { canonicalMetric(it, available) ?: it }.toMutableList()
+    } else {
+        visibleMetrics.toMutableList()
+    }
+    if (first !in next) next.add(first)
+    if (second !in next) next.add(second)
+    val firstIndex = next.indexOf(first)
+    val secondIndex = next.indexOf(second)
+    if (firstIndex >= 0 && secondIndex >= 0) {
+        val temp = next[firstIndex]
+        next[firstIndex] = next[secondIndex]
+        next[secondIndex] = temp
+    }
+    return next.filter { it.isNotBlank() }.distinct().joinToString(",")
 }
 
 
@@ -2285,7 +2369,7 @@ private fun notificationSummary(context: Context, status: TrainingStatus): Strin
         if (best != null) {
             "Best ${metricDisplayName(metric)} ${formatMetric(best)}${bestEpoch?.let { " @ $it" } ?: ""}"
         } else {
-            "${metricDisplayName(metric)} ${formatMetric(status.metrics[metric])}"
+            "${metricDisplayName(metric)} ${formatMetric(status.latestMetricValue(metric))}"
         }
     }
     val etaText = status.etaSeconds?.let { " · ETA ${formatEta(it)}" } ?: ""

@@ -18,21 +18,21 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 新版 App 会缓存最后一次成功同步的数据。服务器关机、训练完成后断网、临时网络不稳定时，手机端仍然能看到最后一次同步到本地的训练进度和曲线。
 
-安全默认值：服务端接口必须使用 token；App 会加密保存 token；安装脚本默认只从 GitHub 官方地址下载源码，镜像下载需要你手动开启。
+安全默认值：服务端接口必须使用 token；App 会加密保存 token；安装脚本默认只从 GitHub 官方 Release 下载服务端安装包，镜像下载需要你手动开启。
 
 ## 1. 快速开始
 
 在训练服务器上执行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ZephYer8/training-monitor/main/install.sh | bash
+curl -fL https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-install-server.sh | bash
 ```
 
-如果服务器访问 GitHub 很慢，可以手动指定镜像。注意：镜像下载更快，但需要你信任这个镜像源。
+这个命令不依赖 `raw.githubusercontent.com`。如果服务器访问 GitHub Release 很慢，可以手动指定服务端安装包地址。注意：镜像下载更快，但需要你信任这个镜像源。
 
 ```bash
-TRAINING_MONITOR_ARCHIVE_URLS="https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/archive/refs/heads/main.tar.gz" \
-curl -fsSL https://raw.githubusercontent.com/ZephYer8/training-monitor/main/install.sh | bash
+TRAINING_MONITOR_SERVER_BUNDLE_URL="https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-server.tar.gz" \
+curl -fL https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-install-server.sh | bash
 ```
 
 安装完成后查看连接信息：
@@ -112,8 +112,8 @@ training-monitor rotate-token
 如果你 fork 了这个项目，可以这样安装自己的仓库：
 
 ```bash
-TRAINING_MONITOR_REPO=https://github.com/你的用户名/training-monitor \
-curl -fsSL https://raw.githubusercontent.com/ZephYer8/training-monitor/main/install.sh | bash
+TRAINING_MONITOR_REPO_SLUG="你的用户名/training-monitor" \
+curl -fL https://github.com/你的用户名/training-monitor/releases/latest/download/training-monitor-install-server.sh | bash
 ```
 
 ## 3. 服务器配置
@@ -564,7 +564,7 @@ training-monitor connection
 在服务器上重新执行安装命令即可：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ZephYer8/training-monitor/main/install.sh | bash
+curl -fL https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-install-server.sh | bash
 ```
 
 然后重启：

@@ -192,7 +192,9 @@ def pick_metrics(values: Dict[str, Any]) -> Dict[str, float]:
 def metric_label(key: str) -> Optional[str]:
     clean = key.strip().strip('"')
     lowered = clean.lower().strip()
-    lowered = lowered.removeprefix("val/").removeprefix("train/").removeprefix("test/")
+    for prefix in ("val/", "train/", "test/"):
+        if lowered.startswith(prefix):
+            lowered = lowered[len(prefix):]
     lowered = lowered.replace("metrics/", "")
     normalized = lowered.replace("-", "_").replace(".", "_")
 

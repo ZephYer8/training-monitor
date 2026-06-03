@@ -133,7 +133,6 @@ log "initialize token"
 bash "$MONITORCTL" token-init
 log "start monitor service"
 bash "$MONITORCTL" start
-bash "$MONITORCTL" auto-watch || true
 
 echo
 echo "Training Monitor installed"
