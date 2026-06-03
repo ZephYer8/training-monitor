@@ -31,8 +31,32 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Resolve signing mode
+        run: |
+          missing=0
+          present=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            value="${!name:-}"
+            if [ -n "$value" ]; then
+              present=$((present + 1))
+            else
+              missing=$((missing + 1))
+            fi
+          done
+
+          if [ "$present" -eq 4 ]; then
+            echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
+            echo "APK_SIGNING_MODE=official-release" >> "$GITHUB_ENV"
+          elif [ "$present" -eq 0 ]; then
+            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+            echo "APK_SIGNING_MODE=debug-test" >> "$GITHUB_ENV"
+          else
+            echo "::error::Android signing secrets are incomplete. Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD together."
+            exit 1
+          fi
+
       - name: Prepare release signing
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        if: env.HAS_RELEASE_SIGNING == 'true'
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/xunji-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/xunji-release.jks" >> "$GITHUB_ENV"
@@ -40,20 +64,34 @@ jobs:
       - name: Build APK
         run: |
           chmod +x android/gradlew
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+          if [ "$HAS_RELEASE_SIGNING" = "true" ]; then
             (cd android && ./gradlew :app:assembleRelease)
             cp android/app/build/outputs/apk/release/app-release.apk training-monitor.apk
+            {
+              echo "signing_mode=official-release"
+              echo "market_ready=true"
+              echo "note=Built with configured release keystore secrets."
+            } > training-monitor-build-info.txt
           else
             (cd android && ./gradlew :app:assembleDebug)
             cp android/app/build/outputs/apk/debug/app-debug.apk training-monitor.apk
+            {
+              echo "signing_mode=debug-test"
+              echo "market_ready=false"
+              echo "note=No release keystore secrets were configured. This APK is for testing and direct installation only, not for app-market submission."
+            } > training-monitor-build-info.txt
           fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: training-monitor-apk
-          path: training-monitor.apk
+          path: |
+            training-monitor.apk
+            training-monitor-build-info.txt
 
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: training-monitor.apk
+          files: |
+            training-monitor.apk
+            training-monitor-build-info.txt

@@ -619,7 +619,7 @@ rm -f ~/.local/bin/training-monitor
 
 当前代码已经具备测试 APK、服务端安装脚本、Token 鉴权、App 本地加密保存 Token、通知权限说明、离线缓存和 OpenMMLab 常见日志自动识别能力。正式提交应用市场前，还需要补齐这些外部材料：
 
-- 正式签名：在 GitHub Secrets 配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，重新打包后得到正式 release APK。
+- 正式签名：在 GitHub Secrets 配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，重新打包后得到正式 release APK。未配置这些密钥时，GitHub Release 会生成测试 APK，并同时上传 `training-monitor-build-info.txt` 标明 `market_ready=false`，不要用于应用市场提交。
 - 隐私政策 URL：应用市场通常要求填写可公开访问的隐私政策链接，且 App 内应能方便访问隐私与权限说明。
 - App 备案：如果公开向中国大陆用户分发，按应用市场和接入服务商要求完成 APP 备案或相关主体信息提交。
 - 主体资料：准备开发者姓名或主体名称、联系方式、应用名称“训迹”、作者“Zephyer”、包名 `com.modeltest.monitor`。
