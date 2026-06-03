@@ -224,6 +224,20 @@ training-monitor logs
 
 如果手机提示不允许安装未知来源应用，需要在系统设置里允许当前浏览器或文件管理器安装应用。
 
+如果你要在本地重新构建 APK，需要先安装 JDK 17 和 Android SDK，然后执行：
+
+```bash
+cd android
+./gradlew :app:assembleDebug
+```
+
+Windows 可以执行：
+
+```powershell
+cd android
+.\gradlew.bat :app:assembleDebug
+```
+
 ### 5.2 填写连接信息
 
 打开 App 后填写：
