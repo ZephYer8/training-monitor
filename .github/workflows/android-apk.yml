@@ -82,9 +82,13 @@ jobs:
             } > training-monitor-build-info.txt
           fi
 
+      - name: Build Python package
+        run: |
+          python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist .
+
       - name: Build server installer bundle
         run: |
-          tar --exclude='__pycache__' --exclude='.test-tmp' -czf training-monitor-server.tar.gz install.sh install-server.sh scripts server
+          tar --exclude='__pycache__' --exclude='.test-tmp' -czf training-monitor-server.tar.gz pyproject.toml README.md install.sh install-server.sh scripts server
           cp install-server.sh training-monitor-install-server.sh
 
       - uses: actions/upload-artifact@v4
@@ -95,6 +99,7 @@ jobs:
             training-monitor-build-info.txt
             training-monitor-server.tar.gz
             training-monitor-install-server.sh
+            dist/*.whl
 
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
@@ -104,3 +109,4 @@ jobs:
             training-monitor-build-info.txt
             training-monitor-server.tar.gz
             training-monitor-install-server.sh
+            dist/*.whl

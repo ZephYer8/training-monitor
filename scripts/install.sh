@@ -27,6 +27,8 @@ else
     BIN_DIR=""
 fi
 PYTHON="${TRAINING_MONITOR_PYTHON:-}"
+PYTHON_PACKAGES_DIR="$TRAINING_MONITOR_HOME/python-packages"
+VENV_PY="$TRAINING_MONITOR_HOME/venv/bin/python"
 
 if [ -z "$TRAINING_MONITOR_HOME" ] || [ "$TRAINING_MONITOR_HOME" = "/" ]; then
     die "Unsafe TRAINING_MONITOR_HOME: $TRAINING_MONITOR_HOME"
@@ -38,16 +40,64 @@ fi
 find_python() {
     for candidate in "$PYTHON" python3 python /root/miniconda3/bin/python; do
         [ -n "$candidate" ] || continue
+        resolved=""
         if command -v "$candidate" >/dev/null 2>&1; then
-            command -v "$candidate"
-            return
+            resolved="$(command -v "$candidate")"
+        elif [ -x "$candidate" ]; then
+            resolved="$candidate"
         fi
-        if [ -x "$candidate" ]; then
-            echo "$candidate"
+
+        [ -n "$resolved" ] || continue
+        if "$resolved" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 8) else 1)
+PY
+        then
+            echo "$resolved"
             return
         fi
     done
     die "Python 3.8+ is required"
+}
+
+write_python_wrapper() {
+    local real_python="$1"
+    mkdir -p "$TRAINING_MONITOR_HOME/venv/bin" "$PYTHON_PACKAGES_DIR"
+    cat > "$VENV_PY" <<EOF
+#!/usr/bin/env bash
+export PYTHONPATH="$PYTHON_PACKAGES_DIR\${PYTHONPATH:+:\$PYTHONPATH}"
+exec "$real_python" "\$@"
+EOF
+    sed -i 's/\r$//' "$VENV_PY" 2>/dev/null || true
+    chmod +x "$VENV_PY"
+}
+
+ensure_pip() {
+    if "$VENV_PY" -m pip --version >/dev/null 2>&1; then
+        return
+    fi
+
+    if "$VENV_PY" -m ensurepip --upgrade >/dev/null 2>&1; then
+        return
+    fi
+
+    die "Python pip is unavailable. Please install python3-pip, or set TRAINING_MONITOR_PYTHON to a Python/Conda environment with pip."
+}
+
+prepare_python_runtime() {
+    if [ -x "$VENV_PY" ]; then
+        return
+    fi
+
+    log "create Python virtual environment"
+    rm -rf "$TRAINING_MONITOR_HOME/venv"
+    if "$PYTHON_BIN" -m venv "$TRAINING_MONITOR_HOME/venv"; then
+        return
+    fi
+
+    log "python venv is unavailable; using local package runtime"
+    rm -rf "$TRAINING_MONITOR_HOME/venv" "$PYTHON_PACKAGES_DIR"
+    write_python_wrapper "$PYTHON_BIN"
 }
 
 log "install home: $TRAINING_MONITOR_HOME"
@@ -66,14 +116,20 @@ MONITORCTL="$TRAINING_MONITOR_HOME/scripts/monitorctl"
 sed -i 's/\r$//' "$MONITORCTL" "$TRAINING_MONITOR_HOME/scripts/install.sh" "$TRAINING_MONITOR_HOME/install.sh" 2>/dev/null || true
 
 PYTHON_BIN="$(find_python)"
-if [ ! -x "$TRAINING_MONITOR_HOME/venv/bin/python" ]; then
-    log "create Python virtual environment"
-    "$PYTHON_BIN" -m venv "$TRAINING_MONITOR_HOME/venv"
-fi
+prepare_python_runtime
 
 log "install Python dependencies"
-"$TRAINING_MONITOR_HOME/venv/bin/python" -m pip install --upgrade pip
-"$TRAINING_MONITOR_HOME/venv/bin/python" -m pip install -r "$TRAINING_MONITOR_HOME/server/requirements.txt"
+ensure_pip
+if "$VENV_PY" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if hasattr(sys, "real_prefix") or sys.prefix != sys.base_prefix else 1)
+PY
+then
+    "$VENV_PY" -m pip install --upgrade pip
+    "$VENV_PY" -m pip install -r "$TRAINING_MONITOR_HOME/server/requirements.txt"
+else
+    "$VENV_PY" -m pip install --upgrade --target "$PYTHON_PACKAGES_DIR" -r "$TRAINING_MONITOR_HOME/server/requirements.txt"
+fi
 
 chmod +x "$MONITORCTL"
 
@@ -114,14 +170,16 @@ install_command_entries() {
     }
 
     if [ -d "$HOME" ]; then
-        touch "$HOME/.bashrc" 2>/dev/null || true
-        if ! grep -q 'training-monitor/bin-path' "$HOME/.bashrc" 2>/dev/null; then
-            cat >> "$HOME/.bashrc" <<'EOF'
+        for profile in "$HOME/.bashrc" "$HOME/.profile" "$HOME/.zshrc"; do
+            touch "$profile" 2>/dev/null || true
+            if ! grep -q 'training-monitor/bin-path' "$profile" 2>/dev/null; then
+                cat >> "$profile" <<'EOF'
 
 # training-monitor/bin-path
 export PATH="/usr/local/bin:/usr/bin:$HOME/.local/bin:$PATH"
 EOF
-        fi
+            fi
+        done
     fi
 
     export PATH="/usr/local/bin:/usr/bin:$HOME/.local/bin:$PATH"
@@ -142,6 +200,7 @@ if command -v training-monitor >/dev/null 2>&1; then
     echo "You can run: training-monitor status"
 else
     echo "If your shell cannot find it, run: $COMMAND_PATH status"
+    echo "Or refresh PATH once: export PATH=\"/usr/local/bin:/usr/bin:\$HOME/.local/bin:\$PATH\""
 fi
 echo
 bash "$MONITORCTL" connection

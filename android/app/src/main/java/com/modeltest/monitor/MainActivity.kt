@@ -1016,19 +1016,49 @@ private fun MetricGrid(
                 Text(if (editingLayout) "完成" else "调整布局")
             }
         }
-        if (editingLayout && selectedMetric != null) {
+        if (editingLayout) {
             Surface(
-                color = Color(0xFFEFF6FF),
-                contentColor = Color(0xFF2563EB),
-                shape = RoundedCornerShape(8.dp),
+                color = Color(0xFFF8FAFC),
+                contentColor = Color(0xFF111827),
+                shape = RoundedCornerShape(10.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(
-                    text = "已选中 ${metricDisplayName(selectedMetric ?: "")}，再点目标方块交换位置",
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Surface(
+                            color = Color(0xFF111827),
+                            contentColor = Color.White,
+                            shape = RoundedCornerShape(50),
+                        ) {
+                            Text(
+                                text = "布局编辑",
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Text(
+                            text = "把最关注的指标放到前面，首页会按这个顺序显示。",
+                            color = Color(0xFF6B7280),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Text(
+                        text = selectedMetric?.let {
+                            "已选中 ${metricDisplayName(it)}，再点另一个方块即可交换位置。"
+                        } ?: "点击方块可选择交换；也可以用每张卡片里的置顶、前移、后移、置底按钮微调。",
+                        color = Color(0xFF2563EB),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
         }
         visibleMetrics.chunked(2).forEachIndexed { rowIndex, rowMetrics ->
@@ -1066,6 +1096,14 @@ private fun MetricGrid(
                             selectedMetric = null
                             onMetricMove(metric, 1)
                         },
+                        onMoveFirst = {
+                            selectedMetric = null
+                            onMetricMove(metric, -visibleMetrics.size)
+                        },
+                        onMoveLast = {
+                            selectedMetric = null
+                            onMetricMove(metric, visibleMetrics.size)
+                        },
                         modifier = if (rowMetrics.size == 1) {
                             Modifier.fillMaxWidth()
                         } else {
@@ -1093,6 +1131,8 @@ private fun MetricCard(
     onClick: () -> Unit,
     onMovePrevious: () -> Unit,
     onMoveNext: () -> Unit,
+    onMoveFirst: () -> Unit,
+    onMoveLast: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val cardModifier = if (editing) {
@@ -1130,12 +1170,12 @@ private fun MetricCard(
                 )
                 if (editing) {
                     Surface(
-                        color = if (selected) Color(0xFF2563EB) else Color(0xFFE0E7FF),
+                        color = if (selected) Color(0xFF111827) else Color(0xFFE0E7FF),
                         contentColor = if (selected) Color.White else Color(0xFF2563EB),
                         shape = RoundedCornerShape(50),
                     ) {
                         Text(
-                            text = "#$position",
+                            text = "位置 $position",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
@@ -1159,12 +1199,21 @@ private fun MetricCard(
             if (editing) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(
+                        onClick = onMoveFirst,
+                        enabled = canMovePrevious,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("置顶")
+                    }
+                    TextButton(
                         onClick = onMovePrevious,
                         enabled = canMovePrevious,
                         modifier = Modifier.weight(1f),
                     ) {
                         Text("前移")
                     }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     TextButton(
                         onClick = onMoveNext,
                         enabled = canMoveNext,
@@ -1172,9 +1221,16 @@ private fun MetricCard(
                     ) {
                         Text("后移")
                     }
+                    TextButton(
+                        onClick = onMoveLast,
+                        enabled = canMoveNext,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("置底")
+                    }
                 }
                 Text(
-                    text = if (selected) "已选中，再点另一块交换" else "也可以点两个方块交换",
+                    text = if (selected) "已选中，再点另一块交换位置" else "点击两张卡片可以直接交换",
                     color = Color(0xFF2563EB),
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,

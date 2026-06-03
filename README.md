@@ -22,7 +22,22 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 ## 1. 快速开始
 
-在训练服务器上执行：
+推荐先用 pip 安装服务器端：
+
+```bash
+python3 -m pip install --user --upgrade https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-server.tar.gz
+python3 -m monitorctl_py start
+python3 -m monitorctl_py connection
+```
+
+如果你的服务器已经把 `~/.local/bin` 加入 `PATH`，也可以直接运行：
+
+```bash
+training-monitor start
+training-monitor connection
+```
+
+如果服务器没有配置 pip，或者你想直接一键安装，在训练服务器上执行：
 
 ```bash
 curl -fL https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-install-server.sh | bash
@@ -91,7 +106,7 @@ training-monitor rotate-token
 - `curl` 或 `wget`
 - 手机能访问到服务器开放出来的后端地址
 
-安装脚本会创建独立虚拟环境，不会改你的训练环境。
+推荐使用 pip 安装。安装脚本会优先创建独立虚拟环境；如果服务器缺少 `python3-venv`，会自动改用本地 Python 包目录，尽量避免卡在 `ensurepip is not available`。
 
 ### 2.2 默认安装位置
 
