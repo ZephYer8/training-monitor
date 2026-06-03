@@ -573,8 +573,8 @@ private fun DashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Header(
             status = status,
@@ -663,8 +663,13 @@ private fun Header(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "训迹",
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "AI Training Console",
+                color = Color(0xFF2563EB),
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = syncText(status, error, isRefreshing),
@@ -676,7 +681,10 @@ private fun Header(
         StatusPill(status = if (error == null) status.status else "error")
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = onRefresh) {
+        OutlinedButton(
+            onClick = onRefresh,
+            shape = RoundedCornerShape(50),
+        ) {
             Text("立即刷新")
         }
     }
@@ -688,13 +696,18 @@ private fun ProgressHeroCard(status: TrainingStatus) {
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            Text(
+                text = "训练会话",
+                color = Color(0xFF2563EB),
+                fontWeight = FontWeight.SemiBold,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -729,6 +742,8 @@ private fun ProgressHeroCard(status: TrainingStatus) {
 
             LinearProgressIndicator(
                 progress = { status.progress },
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = Color(0xFFE0E7FF),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp),
@@ -772,10 +787,9 @@ private fun TrainingBuddy(status: String, progress: Float, modifier: Modifier = 
         else -> "连接服务器后自动开始"
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFFF8FBFF)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = Color(0xFFF8FBFF),
         modifier = modifier,
     ) {
         Row(
@@ -957,6 +971,7 @@ private fun MetricGrid(
     }
 
     var selectedMetric by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingLayout by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(visibleMetrics) {
         selectedMetric?.let { metric ->
             if (metric !in visibleMetrics) {
@@ -964,32 +979,73 @@ private fun MetricGrid(
             }
         }
     }
+    LaunchedEffect(editingLayout) {
+        if (!editingLayout) selectedMetric = null
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (selectedMetric != null) {
-            Text(
-                text = "已选中 ${metricDisplayName(selectedMetric ?: "")}，再点另一个指标卡即可交换位置",
-                color = Color(0xFF2563EB),
-                style = MaterialTheme.typography.bodySmall,
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text(
+                    text = "指标看板",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = if (editingLayout) {
+                        "点选两个方块即可交换位置"
+                    } else {
+                        "显示设置中勾选的指标，可自定义顺序"
+                    },
+                    color = Color(0xFF6B7280),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(onClick = { editingLayout = !editingLayout }) {
+                Text(if (editingLayout) "完成" else "调整布局")
+            }
         }
-        visibleMetrics.chunked(2).forEach { rowMetrics ->
+        if (editingLayout && selectedMetric != null) {
+            Surface(
+                color = Color(0xFFEFF6FF),
+                contentColor = Color(0xFF2563EB),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = "已选中 ${metricDisplayName(selectedMetric ?: "")}，再点目标方块交换位置",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        visibleMetrics.chunked(2).forEachIndexed { rowIndex, rowMetrics ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                rowMetrics.forEach { metric ->
+                rowMetrics.forEachIndexed { metricIndex, metric ->
+                    val position = rowIndex * 2 + metricIndex + 1
                     MetricCard(
                         title = metricDisplayName(metric),
                         current = status.latestMetricValue(metric),
                         best = status.bestMetrics[metric],
                         bestEpoch = status.bestEpochs[metric],
                         selected = selectedMetric == metric,
+                        editing = editingLayout,
+                        position = position,
                         onClick = {
-                            val first = selectedMetric
-                            when {
-                                first == null -> selectedMetric = metric
-                                first == metric -> selectedMetric = null
-                                else -> {
-                                    onMetricSwap(first, metric)
-                                    selectedMetric = null
+                            if (editingLayout) {
+                                val first = selectedMetric
+                                when {
+                                    first == null -> selectedMetric = metric
+                                    first == metric -> selectedMetric = null
+                                    else -> {
+                                        onMetricSwap(first, metric)
+                                        selectedMetric = null
+                                    }
                                 }
                             }
                         },
@@ -1013,27 +1069,59 @@ private fun MetricCard(
     best: Double?,
     bestEpoch: Int?,
     selected: Boolean,
+    editing: Boolean,
+    position: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val cardModifier = if (editing) {
+        modifier.clickable(onClick = onClick)
+    } else {
+        modifier
+    }
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = if (selected) Color(0xFFEFF6FF) else Color.White,
+            containerColor = when {
+                selected -> Color(0xFFEFF6FF)
+                editing -> Color(0xFFFBFDFF)
+                else -> Color.White
+            },
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-        modifier = modifier.clickable(onClick = onClick),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (selected) 3.dp else 1.dp),
+        modifier = cardModifier,
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                title,
-                color = if (selected) Color(0xFF2563EB) else Color(0xFF6B7280),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    color = if (selected) Color(0xFF2563EB) else Color(0xFF6B7280),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (editing) {
+                    Surface(
+                        color = if (selected) Color(0xFF2563EB) else Color(0xFFE0E7FF),
+                        contentColor = if (selected) Color.White else Color(0xFF2563EB),
+                        shape = RoundedCornerShape(50),
+                    ) {
+                        Text(
+                            text = "#$position",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                }
+            }
             Text(
                 text = formatMetric(current),
                 style = MaterialTheme.typography.titleLarge,
@@ -1047,6 +1135,15 @@ private fun MetricCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (editing) {
+                Text(
+                    text = if (selected) "已选中，点击另一个方块交换" else "点击选择并交换位置",
+                    color = Color(0xFF2563EB),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
