@@ -497,6 +497,14 @@ private fun MonitorRoot() {
                             stopTrainingNotificationService(context)
                             testMessage = "Token 已清除，通知已停止"
                         },
+                        onWithdrawPrivacyConsent = {
+                            privacyAccepted = false
+                            savePrivacyAccepted(context, false)
+                            notificationEnabled = false
+                            saveNotificationEnabled(context, false)
+                            stopTrainingNotificationService(context)
+                            testMessage = "已撤回同意，应用将停止刷新和通知"
+                        },
                         onSave = {
                             savedUrl = normalizeBaseUrl(draftUrl)
                             draftUrl = savedUrl
@@ -1341,6 +1349,7 @@ private fun SettingsScreen(
     onNotificationEnabledChange: (Boolean) -> Unit,
     onClearCachedData: () -> Unit,
     onClearToken: () -> Unit,
+    onWithdrawPrivacyConsent: () -> Unit,
     onSave: () -> Unit,
     onTest: () -> Unit,
 ) {
@@ -1456,6 +1465,12 @@ private fun SettingsScreen(
                 }
             }
             OutlinedButton(
+                onClick = onWithdrawPrivacyConsent,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("撤回同意并停止使用")
+            }
+            OutlinedButton(
                 onClick = { showPrivacyPolicy = true },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -1551,7 +1566,7 @@ private fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                 Text("权限使用：网络权限用于访问训练监控后端；通知权限和前台服务用于通知栏、锁屏训练状态和完成提醒。")
                 Text("不收集的信息：不读取通讯录、定位、相册、麦克风、摄像头，不采集身份证号、银行卡号等敏感个人信息。")
                 Text("存储方式：Token 通过 Android Keystore 加密保存；训练状态缓存只保存在本机。")
-                Text("删除方式：可在设置页清除训练缓存、清除本机 Token；服务端可执行 training-monitor rotate-token 重新生成 Token。")
+                Text("删除与撤回：可在设置页清除训练缓存、清除本机 Token，也可撤回同意并停止刷新和通知；服务端可执行 training-monitor rotate-token 重新生成 Token。")
                 Text("第三方共享：当前 App 不接入广告 SDK，不向第三方共享个人信息。")
             }
         },
