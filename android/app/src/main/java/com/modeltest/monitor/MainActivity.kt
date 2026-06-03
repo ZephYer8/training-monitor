@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -1213,6 +1214,7 @@ private fun SettingsScreen(
     onTest: () -> Unit,
 ) {
     val context = LocalContext.current
+    var showPrivacyPolicy by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1322,6 +1324,12 @@ private fun SettingsScreen(
                     Text("清除 Token")
                 }
             }
+            OutlinedButton(
+                onClick = { showPrivacyPolicy = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("查看隐私政策要点")
+            }
         }
 
         SettingsCard(title = "显示指标") {
@@ -1353,6 +1361,44 @@ private fun SettingsScreen(
             )
         }
     }
+
+    if (showPrivacyPolicy) {
+        PrivacyPolicyDialog(onDismiss = { showPrivacyPolicy = false })
+    }
+}
+
+
+@Composable
+private fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("隐私政策要点") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("应用名称：训迹", fontWeight = FontWeight.SemiBold)
+                Text("作者：Zephyer")
+                Text("包名：com.modeltest.monitor")
+                Text("功能用途：连接你配置的训练监控后端，展示训练进度、指标曲线、最佳指标、预计剩余时间和训练完成提醒。")
+                Text("收集的信息：服务器地址、访问 Token、刷新间隔、勾选指标和最后一次训练状态缓存。")
+                Text("权限使用：网络权限用于访问训练监控后端；通知权限和前台服务用于通知栏、锁屏训练状态和完成提醒。")
+                Text("不收集的信息：不读取通讯录、定位、相册、麦克风、摄像头，不采集身份证号、银行卡号等敏感个人信息。")
+                Text("存储方式：Token 通过 Android Keystore 加密保存；训练状态缓存只保存在本机。")
+                Text("删除方式：可在设置页清除训练缓存、清除本机 Token；服务端可执行 training-monitor rotate-token 重新生成 Token。")
+                Text("第三方共享：当前 App 不接入广告 SDK，不向第三方共享个人信息。")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("我知道了")
+            }
+        },
+    )
 }
 
 
