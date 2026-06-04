@@ -128,6 +128,48 @@ def audit_versions() -> None:
     ok(f"Android and Python package versions match: {android_version}")
 
 
+def audit_branding_and_copy() -> None:
+    strings = text("android/app/src/main/res/values/strings.xml")
+    if "<string name=\"app_name\">训迹</string>" not in strings:
+        fail("app name must stay as 训迹")
+
+    checked_files = {
+        "android/app/src/main/java/com/modeltest/monitor/MainActivity.kt": text("android/app/src/main/java/com/modeltest/monitor/MainActivity.kt"),
+        "README.md": text("README.md"),
+        "ui-preview/index.html": text("ui-preview/index.html"),
+    }
+    forbidden_terms = ("荣耀", "华为", "灵动", "胶囊", "Honor", "Huawei", "HarmonyOS")
+    for path, content in checked_files.items():
+        for term in forbidden_terms:
+            if term in content:
+                fail(f"device/vendor-specific copy found in {path}: {term}")
+
+    main = checked_files["android/app/src/main/java/com/modeltest/monitor/MainActivity.kt"]
+    if "SettingsCard(title = \"关于我们\")" not in main:
+        fail("settings page must expose 关于我们 instead of test-device notes")
+    ok("app branding and generic user-facing copy")
+
+
+def audit_icon_assets() -> None:
+    foreground_path = ROOT / "android/app/src/main/res/drawable/ic_launcher_foreground.xml"
+    background_path = ROOT / "android/app/src/main/res/drawable/ic_launcher_background.xml"
+    notification_path = ROOT / "android/app/src/main/res/drawable/ic_notification.xml"
+    for icon_path in (foreground_path, background_path, notification_path):
+        if not icon_path.exists():
+            fail(f"missing icon asset: {icon_path.relative_to(ROOT)}")
+        ET.parse(icon_path)
+
+    foreground = foreground_path.read_text(encoding="utf-8")
+    for color in ("#0F172A", "#2563EB", "#22C55E"):
+        if color not in foreground:
+            fail(f"launcher foreground should include dashboard brand color {color}")
+
+    main = text("android/app/src/main/java/com/modeltest/monitor/MainActivity.kt")
+    if "setSmallIcon(R.drawable.ic_notification)" not in main:
+        fail("notifications must use the dedicated notification icon")
+    ok("launcher and notification icon assets")
+
+
 def audit_server_security() -> None:
     app = text("server/app.py")
     required = [
@@ -169,6 +211,8 @@ def main() -> None:
     audit_backup_rules()
     audit_gradle()
     audit_versions()
+    audit_branding_and_copy()
+    audit_icon_assets()
     audit_server_security()
     audit_privacy_text()
     run_openmmlab_parser_test()
