@@ -23,6 +23,7 @@ PRIMARY_METRICS = (
     "mDice",
     "mAcc",
     "aAcc",
+    "mFscore",
     "BBox mAP",
     "BBox mAP50",
     "Segm mAP",
@@ -30,6 +31,10 @@ PRIMARY_METRICS = (
     "mAP",
     "mAP50",
     "AP",
+    "AP50",
+    "AP75",
+    "AR",
+    "AR@100",
     "NDS",
     "PQ",
     "PCK",
@@ -197,6 +202,8 @@ def metric_label(key: str) -> Optional[str]:
             lowered = lowered[len(prefix):]
     lowered = lowered.replace("metrics/", "")
     normalized = lowered.replace("-", "_").replace(".", "_")
+    last_lowered = lowered.rsplit("/", 1)[-1]
+    last_normalized = normalized.rsplit("/", 1)[-1]
 
     if normalized in SKIP_METRICS or normalized.endswith("_lr") or normalized.endswith("/lr"):
         return None
@@ -208,6 +215,7 @@ def metric_label(key: str) -> Optional[str]:
         "iou": "IoU",
         "mdice": "mDice",
         "mfscore": "mFscore",
+        "dice": "Dice",
         "macc": "mAcc",
         "aacc": "aAcc",
         "accuracy": "Accuracy",
@@ -220,9 +228,13 @@ def metric_label(key: str) -> Optional[str]:
         "accuracy/top5": "Top5 Acc",
         "precision": "Precision",
         "recall": "Recall",
+        "f1": "F1 Score",
+        "f1_score": "F1 Score",
+        "fscore": "Fscore",
         "map": "mAP",
         "map50": "mAP50",
         "map_50": "mAP50",
+        "mean_average_precision": "mAP",
         "bbox_map": "BBox mAP",
         "bbox_map_50": "BBox mAP50",
         "bbox_map_75": "BBox mAP75",
@@ -242,7 +254,13 @@ def metric_label(key: str) -> Optional[str]:
         "coco/segm_map_50": "Segm mAP50",
         "coco/segm_map_75": "Segm mAP75",
         "ap": "AP",
+        "ap50": "AP50",
+        "ap_50": "AP50",
+        "ap75": "AP75",
+        "ap_75": "AP75",
         "ar": "AR",
+        "ar@100": "AR@100",
+        "ar_100": "AR@100",
         "pq": "PQ",
         "sq": "SQ",
         "rq": "RQ",
@@ -273,6 +291,10 @@ def metric_label(key: str) -> Optional[str]:
         "rmse": "RMSE",
         "nme": "NME",
         "epe": "EPE",
+        "mpjpe": "MPJPE",
+        "p_mpjpe": "P-MPJPE",
+        "pa_mpjpe": "PA-MPJPE",
+        "pve": "PVE",
         "minp": "mINP",
         "rank_1": "Rank-1",
         "rank_5": "Rank-5",
@@ -282,6 +304,10 @@ def metric_label(key: str) -> Optional[str]:
         return known[lowered]
     if normalized in known:
         return known[normalized]
+    if last_lowered in known:
+        return known[last_lowered]
+    if last_normalized in known:
+        return known[last_normalized]
 
     if "bbox_map_50" in normalized:
         return "BBox mAP50"
@@ -312,7 +338,7 @@ def normalize_metric_value(name: str, value: float) -> float:
     lowered = name.lower()
     minimize = any(
         word in lowered
-        for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid", "mate", "mase", "maoe", "mave", "maae")
+        for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid", "mate", "mase", "maoe", "mave", "maae", "mpjpe", "pve")
     )
     if not minimize and 0 <= value <= 1:
         return value * 100
@@ -387,7 +413,7 @@ def metric_should_minimize(name: str) -> bool:
     lowered = name.lower()
     return any(
         word in lowered
-        for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid", "mate", "mase", "maoe", "mave", "maae")
+        for word in ("loss", "error", "mae", "rmse", "nme", "epe", "fid", "mate", "mase", "maoe", "mave", "maae", "mpjpe", "pve")
     )
 
 

@@ -157,6 +157,48 @@ def test_mmyolo_mmdet3d_reid_panoptic_metrics() -> None:
         assert round(rows[1][4]["PQ"], 2) == 51.20
 
 
+def test_prefixed_3d_metrics_and_detection_suffixes() -> None:
+    with test_dir("prefixed-3d") as tmp:
+        log_path = write(
+            tmp / "prefixed.log",
+            """
+            Epoch(val) [9][1/1] pts_bbox/NDS: 0.612 pts_bbox/mAP: 0.431 pts_bbox/mATE: 0.51 AR@100: 0.704 AP50: 0.812 AP75: 0.633
+            """,
+        )
+
+        _, rows = parse_openmmlab_history(log_path, 0)
+        assert round(rows[0][4]["NDS"], 2) == 61.20
+        assert round(rows[0][4]["mAP"], 2) == 43.10
+        assert rows[0][4]["mATE"] == 0.51
+        assert round(rows[0][4]["AR@100"], 2) == 70.40
+        assert round(rows[0][4]["AP50"], 2) == 81.20
+        assert round(rows[0][4]["AP75"], 2) == 63.30
+
+
+def test_mmpretrain_mmaction_mmhuman3d_metrics() -> None:
+    with test_dir("classification-action-human") as tmp:
+        json_path = write(
+            tmp / "mixed.jsonl",
+            """
+            {"mode":"val","epoch":10,"top1_acc":0.765,"top5_acc":0.934,"mean_class_accuracy":0.688,"mean_average_precision":0.712}
+            {"mode":"val","epoch":11,"MPJPE":56.2,"P-MPJPE":41.8,"PVE":72.4}
+            """,
+        )
+
+        _, rows = parse_openmmlab_history(json_path, 0)
+        assert rows[0][0] == "mAP"
+        assert round(rows[0][4]["Top1 Acc"], 2) == 76.50
+        assert round(rows[0][4]["Top5 Acc"], 2) == 93.40
+        assert round(rows[0][4]["Mean Class Accuracy"], 2) == 68.80
+        assert round(rows[0][4]["mAP"], 2) == 71.20
+        assert rows[1][0] == "MPJPE"
+        assert rows[1][4]["MPJPE"] == 56.2
+        assert rows[1][4]["P-MPJPE"] == 41.8
+        assert rows[1][4]["PVE"] == 72.4
+        assert metric_should_minimize("MPJPE")
+        assert metric_should_minimize("PVE")
+
+
 def test_auto_watch_skips_unparseable_latest_file() -> None:
     with test_dir("auto-watch") as root:
         write(root / "train.log", "Epoch(val) [4][5/5] mIoU: 0.79")
@@ -183,5 +225,7 @@ if __name__ == "__main__":
     test_mmpose_metrics_and_minimize()
     test_mmagic_mmocr_mmtracking_metrics()
     test_mmyolo_mmdet3d_reid_panoptic_metrics()
+    test_prefixed_3d_metrics_and_detection_suffixes()
+    test_mmpretrain_mmaction_mmhuman3d_metrics()
     test_auto_watch_skips_unparseable_latest_file()
     print("openmmlab parser tests ok")
