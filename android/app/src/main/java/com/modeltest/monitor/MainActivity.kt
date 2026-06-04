@@ -20,11 +20,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -68,7 +63,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -119,6 +113,7 @@ private const val TokenKey = "token"
 private const val NotificationEnabledKey = "notification_enabled"
 private const val FinishedNotificationSignatureKey = "finished_notification_signature"
 private const val PrivacyAcceptedKey = "privacy_accepted"
+private const val UiStyleKey = "ui_style"
 private const val TrainingNotificationId = 4100
 private const val TrainingFinishedNotificationId = 4101
 private const val TrainingChannelId = "training_status_lock_screen_v2"
@@ -364,6 +359,7 @@ private fun MonitorRoot() {
     var selectedMetricsText by rememberSaveable { mutableStateOf(loadSelectedMetricsText(context)) }
     var notificationEnabled by rememberSaveable { mutableStateOf(loadNotificationEnabled(context)) }
     var privacyAccepted by rememberSaveable { mutableStateOf(loadPrivacyAccepted(context)) }
+    var uiStyle by rememberSaveable { mutableStateOf(loadUiStyle(context)) }
     var status by remember { mutableStateOf(loadCachedStatus(context) ?: TrainingStatus()) }
     var hasFreshStatus by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -450,10 +446,11 @@ private fun MonitorRoot() {
     val visibleMetrics = chooseVisibleMetrics(status, selectedMetrics)
     val metricOptions = mergeMetricOptions(status.metricNames(), selectedMetrics)
     val currentPage = AppPage.valueOf(page)
+    val glassStyle = uiStyle == "glass"
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+        color = if (glassStyle) Color(0xFFEFF6FF) else MaterialTheme.colorScheme.background,
     ) {
         Column(
             modifier = Modifier
@@ -467,6 +464,7 @@ private fun MonitorRoot() {
                         error = error,
                         isRefreshing = isRefreshing,
                         visibleMetrics = visibleMetrics,
+                        glassStyle = glassStyle,
                         onRefresh = { scope.launch { refreshOnce() } },
                         onMetricSwap = { first, second ->
                             val next = swapMetricOrder(status, selectedMetrics, visibleMetrics, first, second)
@@ -492,6 +490,7 @@ private fun MonitorRoot() {
                         metricOptions = metricOptions,
                         selectedMetrics = selectedMetrics,
                         notificationEnabled = notificationEnabled,
+                        uiStyle = uiStyle,
                         testMessage = testMessage,
                         onUrlChange = { draftUrl = it },
                         onTokenChange = { draftToken = it },
@@ -519,6 +518,10 @@ private fun MonitorRoot() {
                                 stopTrainingNotificationService(context)
                                 testMessage = "通知已关闭"
                             }
+                        },
+                        onUiStyleChange = {
+                            uiStyle = it
+                            saveUiStyle(context, it)
                         },
                         onClearCachedData = {
                             clearCachedStatus(context)
@@ -605,6 +608,7 @@ private fun DashboardScreen(
     error: String?,
     isRefreshing: Boolean,
     visibleMetrics: List<String>,
+    glassStyle: Boolean,
     onRefresh: () -> Unit,
     onMetricSwap: (String, String) -> Unit,
     onMetricMove: (String, Int) -> Unit,
@@ -622,7 +626,7 @@ private fun DashboardScreen(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
         )
-        ProgressHeroCard(status)
+        ProgressHeroCard(status, glassStyle)
         BestSummaryCard(status, visibleMetrics)
         MetricGrid(status, visibleMetrics, onMetricSwap, onMetricMove)
         MiniChartCard(status, visibleMetrics)
@@ -732,8 +736,15 @@ private fun Header(
 
 
 @Composable
-private fun ProgressHeroCard(status: TrainingStatus) {
+private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
     val hasTotal = status.totalEpochs > 0
+    val primaryMetric = status.primaryMetric()
+    val current = primaryMetric?.let { status.latestMetricValue(it) }
+    val best = primaryMetric?.let { status.bestMetrics[it] }
+    val bestEpoch = primaryMetric?.let { status.bestEpochs[it] }
+    val cardColor = if (glassStyle) Color(0xEFFFFFFF) else Color.White
+    val consoleColor = if (glassStyle) Color(0xE6111827) else Color(0xFF0F172A)
+    val progressTrackColor = if (glassStyle) Color(0xCCDBEAFE) else Color(0xFFE0E7FF)
     val progressText = if (hasTotal) {
         "${(status.progress * 100).toInt()}%"
     } else {
@@ -745,64 +756,104 @@ private fun ProgressHeroCard(status: TrainingStatus) {
         "${status.epoch.takeIf { it > 0 } ?: "--"} / --"
     }
     val etaText = status.etaSeconds?.let { formatEta(it) } ?: "--"
+    val metricTitle = primaryMetric?.let { metricDisplayName(it) } ?: "Metric"
 
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
+        colors = CardDefaults.elevatedCardColors(containerColor = cardColor),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "训练会话",
-                color = Color(0xFF2563EB),
-                fontWeight = FontWeight.SemiBold,
-            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
-                    Text("训练进度", color = Color(0xFF6B7280))
                     Text(
-                        text = epochText,
-                        style = MaterialTheme.typography.headlineLarge,
+                        text = "训练控制台",
+                        color = Color(0xFF2563EB),
                         fontWeight = FontWeight.Bold,
                     )
+                    Text("实时监测 Epoch、Best 指标和 ETA", color = Color(0xFF6B7280))
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = progressText,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge,
+                ConsoleSignal(status.status)
+            }
+
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = consoleColor,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    GaugeDial(
+                        progress = status.progress,
+                        hasTotal = hasTotal,
+                        status = status.status,
+                        centerText = progressText,
+                        modifier = Modifier.size(132.dp),
                     )
-                    Text(
-                        text = if (hasTotal) "预计剩余 $etaText" else "进度待估算",
-                        color = Color(0xFF6B7280),
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text(
+                            text = statusConsoleTitle(status.status),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        ConsoleLine("Epoch", epochText)
+                        ConsoleLine("ETA", if (hasTotal) etaText else "待估算")
+                        ConsoleLine("Mode", statusText(status.status))
+                    }
                 }
             }
 
-            TrainingBuddy(
-                status = status.status,
-                progress = status.progress,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(126.dp),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ConsoleReadout(
+                    label = "Best $metricTitle",
+                    value = formatMetric(best),
+                    hint = bestEpoch?.let { "epoch $it" } ?: "--",
+                    glassStyle = glassStyle,
+                    modifier = Modifier.weight(1f),
+                )
+                ConsoleReadout(
+                    label = "Current",
+                    value = formatMetric(current),
+                    hint = metricTitle,
+                    glassStyle = glassStyle,
+                    modifier = Modifier.weight(1f),
+                )
+                ConsoleReadout(
+                    label = "Progress",
+                    value = progressText,
+                    hint = if (hasTotal) "实时" else "未知总轮数",
+                    glassStyle = glassStyle,
+                    modifier = Modifier.weight(1f),
+                )
+            }
 
             LinearProgressIndicator(
                 progress = { status.progress },
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = Color(0xFFE0E7FF),
+                color = statusAccent(status.status),
+                trackColor = progressTrackColor,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp),
+                    .height(6.dp),
             )
         }
     }
@@ -810,207 +861,178 @@ private fun ProgressHeroCard(status: TrainingStatus) {
 
 
 @Composable
-private fun TrainingBuddy(status: String, progress: Float, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "training_buddy")
-    val pulse by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1100), RepeatMode.Reverse),
-        label = "buddy_pulse",
-    )
-    val loop by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1600), RepeatMode.Restart),
-        label = "buddy_loop",
-    )
-    val accent = when (status) {
+private fun ConsoleSignal(status: String) {
+    val color = statusAccent(status)
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = color.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.22f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Canvas(modifier = Modifier.size(8.dp)) {
+                drawCircle(color)
+            }
+            Text(statusText(status), color = color, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+
+@Composable
+private fun GaugeDial(
+    progress: Float,
+    hasTotal: Boolean,
+    status: String,
+    centerText: String,
+    modifier: Modifier = Modifier,
+) {
+    val accent = statusAccent(status)
+    Canvas(modifier = modifier) {
+        val stroke = 10.dp.toPx()
+        val inset = stroke / 2f + 3.dp.toPx()
+        val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
+        val arcTopLeft = Offset(inset, inset)
+
+        drawCircle(Color(0xFF111827), radius = size.minDimension / 2f)
+        drawCircle(Color(0xFF1E293B), radius = size.minDimension / 2.35f)
+        drawArc(
+            color = Color(0xFF334155),
+            startAngle = 135f,
+            sweepAngle = 270f,
+            useCenter = false,
+            topLeft = arcTopLeft,
+            size = arcSize,
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+        drawArc(
+            color = accent,
+            startAngle = 135f,
+            sweepAngle = if (hasTotal) 270f * progress.coerceIn(0f, 1f) else 34f,
+            useCenter = false,
+            topLeft = arcTopLeft,
+            size = arcSize,
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+
+        repeat(9) { index ->
+            val angle = Math.toRadians((135 + index * 33.75).toDouble())
+            val outer = size.minDimension / 2.35f
+            val inner = outer - 9.dp.toPx()
+            val cx = size.width / 2f
+            val cy = size.height / 2f
+            drawLine(
+                color = Color(0xFF64748B),
+                start = Offset(
+                    cx + kotlin.math.cos(angle).toFloat() * inner,
+                    cy + kotlin.math.sin(angle).toFloat() * inner,
+                ),
+                end = Offset(
+                    cx + kotlin.math.cos(angle).toFloat() * outer,
+                    cy + kotlin.math.sin(angle).toFloat() * outer,
+                ),
+                strokeWidth = 1.5.dp.toPx(),
+                cap = StrokeCap.Round,
+            )
+        }
+
+        drawContext.canvas.nativeCanvas.apply {
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 24.dp.toPx()
+            color = android.graphics.Color.WHITE
+            drawText(centerText, size.width / 2f, size.height / 2f + 4.dp.toPx(), this)
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+            textSize = 10.dp.toPx()
+            color = android.graphics.Color.rgb(148, 163, 184)
+            drawText("PROGRESS", size.width / 2f, size.height / 2f + 24.dp.toPx(), this)
+        }
+    }
+}
+
+
+@Composable
+private fun ConsoleLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Color(0xFF94A3B8))
+        Text(
+            value,
+            color = Color.White,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+
+@Composable
+private fun ConsoleReadout(
+    label: String,
+    value: String,
+    hint: String,
+    glassStyle: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (glassStyle) Color(0xEAF8FAFC) else Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xBFE5EAF2) else Color(0xFFE5EAF2)),
+        modifier = modifier,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                label,
+                color = Color(0xFF64748B),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                value,
+                color = Color(0xFF0F172A),
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                hint,
+                color = Color(0xFF94A3B8),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+
+private fun statusAccent(status: String): Color {
+    return when (status) {
         "training" -> Color(0xFF2563EB)
         "finished" -> Color(0xFF16A34A)
         "error" -> Color(0xFFDC2626)
-        else -> Color(0xFF6B7280)
-    }
-    val title = when (status) {
-        "training" -> "训练助手正在巡航"
-        "finished" -> "训练完成，结果已记录"
-        "error" -> "连接异常，等待恢复"
-        else -> "等待新的训练任务"
-    }
-    val subtitle = when (status) {
-        "training" -> "Progress ${(progress.coerceIn(0f, 1f) * 100).toInt()}%"
-        "finished" -> "可以查看 Best 指标和曲线"
-        "error" -> "保留最后一次同步数据"
-        else -> "连接服务器后自动开始"
-    }
-
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color(0xFFF8FBFF),
-        modifier = modifier,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BuddyCanvas(
-                status = status,
-                accent = accent,
-                pulse = pulse,
-                loop = loop,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(116.dp),
-            )
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    text = title,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF111827),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = subtitle,
-                    color = Color(0xFF6B7280),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                LinearProgressIndicator(
-                    progress = { progress.coerceIn(0f, 1f) },
-                    color = accent,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp),
-                )
-            }
-        }
+        else -> Color(0xFF64748B)
     }
 }
 
 
-@Composable
-private fun BuddyCanvas(
-    status: String,
-    accent: Color,
-    pulse: Float,
-    loop: Float,
-    modifier: Modifier = Modifier,
-) {
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val groundY = h * 0.82f
-        val bodyX = w * 0.28f
-        val bodyY = h * 0.58f + if (status == "training") (pulse - 0.5f) * 8.dp.toPx() else 0f
-        val skin = Color(0xFFFFD7A8)
-        val ink = Color(0xFF111827)
-        val muted = Color(0xFFE5E7EB)
-
-        drawRoundRect(
-            color = Color(0xFFEAF2FF),
-            topLeft = Offset(w * 0.47f, h * 0.22f),
-            size = Size(w * 0.42f, h * 0.42f),
-            cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx()),
-        )
-        drawRoundRect(
-            color = Color(0xFFBFD7FF),
-            topLeft = Offset(w * 0.47f, h * 0.22f),
-            size = Size(w * 0.42f, h * 0.42f),
-            cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx()),
-            style = Stroke(width = 1.5.dp.toPx()),
-        )
-        repeat(3) { index ->
-            val y = h * (0.32f + index * 0.1f)
-            drawLine(muted, Offset(w * 0.52f, y), Offset(w * 0.84f, y), 1.dp.toPx())
-        }
-        val chart = Path().apply {
-            moveTo(w * 0.53f, h * 0.55f)
-            lineTo(w * 0.61f, h * 0.45f)
-            lineTo(w * 0.69f, h * 0.49f)
-            lineTo(w * 0.78f, h * 0.33f)
-        }
-        drawPath(
-            path = chart,
-            color = if (status == "error") Color(0xFFEF4444) else Color(0xFF2563EB),
-            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-        if (status == "training") {
-            val dotX = w * (0.53f + 0.25f * loop)
-            val dotY = h * (0.55f - 0.2f * loop + 0.04f * pulse)
-            drawCircle(Color(0xFFF59E0B), 5.dp.toPx(), Offset(dotX, dotY))
-        }
-
-        drawRoundRect(
-            color = Color(0x33000000),
-            topLeft = Offset(bodyX - 36.dp.toPx(), groundY),
-            size = Size(72.dp.toPx(), 10.dp.toPx()),
-            cornerRadius = CornerRadius(50f, 50f),
-        )
-
-        val armLift = when (status) {
-            "finished" -> -32.dp.toPx()
-            "training" -> -8.dp.toPx() - pulse * 12.dp.toPx()
-            "error" -> 10.dp.toPx()
-            else -> 4.dp.toPx()
-        }
-        val legStep = if (status == "training") (loop - 0.5f) * 18.dp.toPx() else 0f
-
-        drawLine(accent, Offset(bodyX - 16.dp.toPx(), bodyY + 18.dp.toPx()), Offset(bodyX - 36.dp.toPx(), bodyY + armLift), 8.dp.toPx(), StrokeCap.Round)
-        drawLine(accent, Offset(bodyX + 16.dp.toPx(), bodyY + 18.dp.toPx()), Offset(bodyX + 36.dp.toPx(), bodyY + armLift * 0.7f), 8.dp.toPx(), StrokeCap.Round)
-        drawLine(ink, Offset(bodyX - 12.dp.toPx(), bodyY + 56.dp.toPx()), Offset(bodyX - 22.dp.toPx() - legStep, groundY), 7.dp.toPx(), StrokeCap.Round)
-        drawLine(ink, Offset(bodyX + 12.dp.toPx(), bodyY + 56.dp.toPx()), Offset(bodyX + 22.dp.toPx() + legStep, groundY), 7.dp.toPx(), StrokeCap.Round)
-        drawRoundRect(
-            color = accent,
-            topLeft = Offset(bodyX - 28.dp.toPx(), bodyY + 8.dp.toPx()),
-            size = Size(56.dp.toPx(), 58.dp.toPx()),
-            cornerRadius = CornerRadius(20.dp.toPx(), 20.dp.toPx()),
-        )
-        drawCircle(skin, 24.dp.toPx(), Offset(bodyX, bodyY - 18.dp.toPx()))
-        drawRoundRect(
-            color = ink,
-            topLeft = Offset(bodyX - 22.dp.toPx(), bodyY - 45.dp.toPx()),
-            size = Size(44.dp.toPx(), 14.dp.toPx()),
-            cornerRadius = CornerRadius(10.dp.toPx(), 10.dp.toPx()),
-        )
-        drawCircle(ink, 2.8.dp.toPx(), Offset(bodyX - 8.dp.toPx(), bodyY - 18.dp.toPx()))
-        drawCircle(ink, 2.8.dp.toPx(), Offset(bodyX + 9.dp.toPx(), bodyY - 18.dp.toPx()))
-
-        val mouth = Path().apply {
-            moveTo(bodyX - 9.dp.toPx(), bodyY - 6.dp.toPx())
-            if (status == "error") {
-                lineTo(bodyX + 9.dp.toPx(), bodyY - 6.dp.toPx())
-            } else {
-                quadraticBezierTo(bodyX, bodyY + 3.dp.toPx(), bodyX + 10.dp.toPx(), bodyY - 6.dp.toPx())
-            }
-        }
-        drawPath(mouth, ink, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round))
-
-        if (status == "finished") {
-            listOf(
-                Offset(w * 0.16f, h * 0.14f),
-                Offset(w * 0.38f, h * 0.16f),
-                Offset(w * 0.43f, h * 0.34f),
-            ).forEachIndexed { index, offset ->
-                drawCircle(ChartColors[(index + 1) % ChartColors.size], (4 + index).dp.toPx(), offset)
-            }
-        }
-        if (status == "error") {
-            val warning = Path().apply {
-                moveTo(w * 0.84f, h * 0.22f)
-                lineTo(w * 0.92f, h * 0.42f)
-                lineTo(w * 0.76f, h * 0.42f)
-                close()
-            }
-            drawPath(warning, Color(0xFFFFEDD5))
-            drawPath(warning, Color(0xFFF97316), style = Stroke(width = 2.dp.toPx()))
-            drawLine(Color(0xFFF97316), Offset(w * 0.84f, h * 0.29f), Offset(w * 0.84f, h * 0.36f), 2.dp.toPx())
-            drawCircle(Color(0xFFF97316), 2.dp.toPx(), Offset(w * 0.84f, h * 0.39f))
-        }
+private fun statusConsoleTitle(status: String): String {
+    return when (status) {
+        "training" -> "训练任务运行中"
+        "finished" -> "训练完成，结果已保存"
+        "error" -> "连接异常，保留缓存"
+        else -> "等待训练任务"
     }
 }
 
@@ -1581,12 +1603,14 @@ private fun SettingsScreen(
     metricOptions: List<String>,
     selectedMetrics: List<String>,
     notificationEnabled: Boolean,
+    uiStyle: String,
     testMessage: String,
     onUrlChange: (String) -> Unit,
     onTokenChange: (String) -> Unit,
     onRefreshSecondsChange: (Int) -> Unit,
     onMetricToggle: (String) -> Unit,
     onNotificationEnabledChange: (Boolean) -> Unit,
+    onUiStyleChange: (String) -> Unit,
     onClearCachedData: () -> Unit,
     onClearToken: () -> Unit,
     onWithdrawPrivacyConsent: () -> Unit,
@@ -1643,6 +1667,24 @@ private fun SettingsScreen(
             }
             if (testMessage.isNotBlank()) {
                 Text(testMessage, color = Color(0xFF6B7280))
+            }
+        }
+
+        SettingsCard(title = "界面风格") {
+            Text("选择你喜欢的界面质感，后续可以继续扩展更多主题。", color = Color(0xFF6B7280))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MetricChip(
+                    text = "普通",
+                    selected = uiStyle != "glass",
+                    onClick = { onUiStyleChange("normal") },
+                    modifier = Modifier.weight(1f),
+                )
+                MetricChip(
+                    text = "毛玻璃",
+                    selected = uiStyle == "glass",
+                    onClick = { onUiStyleChange("glass") },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
 
@@ -2421,6 +2463,22 @@ private fun saveRefreshSeconds(context: Context, seconds: Int) {
     settingsPreferences(context)
         .edit()
         .putInt("refresh_seconds", seconds)
+        .apply()
+}
+
+
+private fun loadUiStyle(context: Context): String {
+    return settingsPreferences(context)
+        .getString(UiStyleKey, "normal")
+        ?.takeIf { it == "glass" }
+        ?: "normal"
+}
+
+
+private fun saveUiStyle(context: Context, value: String) {
+    settingsPreferences(context)
+        .edit()
+        .putString(UiStyleKey, if (value == "glass") "glass" else "normal")
         .apply()
 }
 

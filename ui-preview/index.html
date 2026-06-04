@@ -232,173 +232,95 @@
       font-weight: 900;
     }
 
-    .agent {
+    .console-panel {
       margin-top: 18px;
-      min-height: 168px;
       border-radius: 16px;
-      background: linear-gradient(135deg, #f8fbff, #eef4ff);
-      border: 1px solid #e1eaff;
+      background: #0f172a;
+      border: 1px solid #1e293b;
       display: grid;
-      grid-template-columns: 130px 1fr;
-      gap: 10px;
+      grid-template-columns: 132px 1fr;
+      gap: 16px;
       align-items: center;
       padding: 16px;
       overflow: hidden;
     }
 
-    .buddy {
-      width: 116px;
-      height: 132px;
+    .gauge {
+      width: 126px;
+      height: 126px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, #1e293b 0 42%, transparent 43%),
+        conic-gradient(from 135deg, var(--blue) 0 58%, #334155 58% 100%);
+      box-shadow: inset 0 0 0 10px #111827, 0 18px 32px rgba(0, 0, 0, .22);
       position: relative;
-      animation: floaty 1.8s ease-in-out infinite;
+      display: grid;
+      place-items: center;
     }
 
-    .head {
-      width: 56px;
-      height: 56px;
-      border-radius: 50%;
-      background: #ffd9a5;
-      border: 3px solid #111827;
-      position: absolute;
-      top: 12px;
-      left: 35px;
-    }
-
-    .hair {
-      width: 58px;
-      height: 14px;
-      border-radius: 999px 999px 6px 6px;
-      background: #111827;
-      position: absolute;
-      left: 34px;
-      top: 6px;
-    }
-
-    .eye {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #111827;
-      position: absolute;
-      top: 32px;
-    }
-
-    .eye.left { left: 49px; }
-    .eye.right { left: 73px; }
-
-    .mouth {
-      width: 22px;
-      height: 12px;
-      border-bottom: 3px solid #111827;
-      border-radius: 0 0 999px 999px;
-      position: absolute;
-      top: 43px;
-      left: 57px;
-    }
-
-    .body {
-      width: 72px;
-      height: 58px;
-      border-radius: 22px 22px 12px 12px;
-      background: linear-gradient(180deg, #477cf2, #2456d9);
-      border: 3px solid #123a9c;
-      position: absolute;
-      left: 28px;
-      top: 68px;
-    }
-
-    .arm {
-      width: 13px;
-      height: 54px;
-      border-radius: 999px;
-      background: #2f6eea;
-      position: absolute;
-      top: 61px;
-      transform-origin: 50% 8px;
-    }
-
-    .arm.left { left: 23px; transform: rotate(38deg); }
-    .arm.right { left: 87px; transform: rotate(-42deg); animation: wave 1.2s ease-in-out infinite; }
-
-    .shadow {
-      width: 80px;
-      height: 13px;
-      border-radius: 50%;
-      background: rgba(15, 23, 42, .18);
-      position: absolute;
-      left: 18px;
-      bottom: 0;
-    }
-
-    .chart-bubble {
-      width: 58px;
-      height: 46px;
-      border: 2px solid #9bb8f9;
-      border-radius: 13px;
-      position: absolute;
-      top: 50px;
-      right: -6px;
-      background: rgba(255, 255, 255, .76);
-    }
-
-    .chart-bubble::after {
+    .gauge::before {
       content: "";
       position: absolute;
-      left: 9px;
-      top: 24px;
-      width: 38px;
-      height: 12px;
-      border-top: 4px solid var(--blue);
-      border-right: 4px solid var(--green);
-      border-radius: 999px;
-      transform: rotate(-18deg);
+      inset: 13px;
+      border-radius: 50%;
+      border: 1px dashed rgba(148, 163, 184, .55);
     }
 
-    .agent-copy strong {
-      display: block;
-      font-size: 18px;
-      margin-bottom: 10px;
-    }
-
-    .bar {
-      width: 100%;
-      height: 11px;
-      border-radius: 999px;
-      background: #e7e3f6;
-      overflow: hidden;
-      margin-top: 18px;
-    }
-
-    .bar span {
-      display: block;
-      height: 100%;
-      width: 58%;
-      border-radius: 999px;
-      background: linear-gradient(90deg, var(--blue), #5b8cff);
-    }
-
-    .hero-metrics {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 4px;
-      background: #111827;
+    .gauge strong {
       color: #fff;
-      border-radius: 18px;
-      padding: 20px 18px;
-      margin-bottom: 14px;
-    }
-
-    .hero-metrics div span {
-      color: #cbd5e1;
-      display: block;
-      font-size: 13px;
-      font-weight: 800;
-      margin-bottom: 10px;
-    }
-
-    .hero-metrics div strong {
       font-size: 26px;
       line-height: 1;
+    }
+
+    .console-copy strong {
+      color: #fff;
+      display: block;
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    .console-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      color: #94a3b8;
+      font-size: 13px;
+      margin: 8px 0;
+    }
+
+    .console-line b {
+      color: #fff;
+    }
+
+    .readout-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .readout {
+      background: #f8fafc;
+      border: 1px solid #e5eaf2;
+      border-radius: 14px;
+      padding: 12px 10px;
+    }
+
+    .readout span {
+      display: block;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .readout strong {
+      display: block;
+      margin-top: 7px;
+      font-size: 18px;
+      color: #0f172a;
     }
 
     .metric-grid {
@@ -559,26 +481,43 @@
       background: var(--blue-soft);
     }
 
-    .finished .arm.right { animation: celebrate 1.4s ease-in-out infinite; }
-    .finished .bar span { width: 100%; background: linear-gradient(90deg, var(--green), #86efac); }
+    .finished .gauge {
+      background:
+        radial-gradient(circle, #173526 0 42%, transparent 43%),
+        conic-gradient(from 135deg, var(--green) 0 100%, #334155 100%);
+    }
     .finished .status-pill { color: #047857; background: #dcfce7; border-color: #bbf7d0; }
-    .error .body { background: linear-gradient(180deg, #fb7185, #e11d48); border-color: #9f1239; }
-    .error .bar span { width: 28%; background: linear-gradient(90deg, #fb7185, #f97316); }
+    .error .gauge {
+      background:
+        radial-gradient(circle, #3b1420 0 42%, transparent 43%),
+        conic-gradient(from 135deg, #e11d48 0 28%, #334155 28% 100%);
+    }
     .error .status-pill { color: #be123c; background: #ffe4e6; border-color: #fecdd3; }
 
-    @keyframes floaty {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-5px); }
+    .glass-mode {
+      background:
+        radial-gradient(circle at 18% 6%, rgba(47, 110, 234, .18), transparent 32%),
+        radial-gradient(circle at 84% 18%, rgba(49, 164, 85, .14), transparent 28%),
+        linear-gradient(180deg, #f8fbff 0%, #eaf2ff 48%, #f6f8ff 100%);
     }
 
-    @keyframes wave {
-      0%, 100% { transform: rotate(-42deg); }
-      50% { transform: rotate(-66deg); }
+    .glass-mode .card,
+    .glass-mode .metric,
+    .glass-mode .design-card {
+      background: rgba(255, 255, 255, .72);
+      border-color: rgba(255, 255, 255, .75);
+      box-shadow: 0 20px 44px rgba(15, 23, 42, .10);
+      backdrop-filter: blur(18px);
     }
 
-    @keyframes celebrate {
-      0%, 100% { transform: rotate(-70deg); }
-      50% { transform: rotate(-22deg); }
+    .glass-mode .console-panel {
+      background: rgba(15, 23, 42, .88);
+      border-color: rgba(255, 255, 255, .16);
+      backdrop-filter: blur(16px);
+    }
+
+    .glass-mode .readout {
+      background: rgba(248, 250, 252, .82);
     }
 
     @media (max-width: 900px) {
@@ -589,8 +528,9 @@
     @media (max-width: 460px) {
       .stage { padding: 0; }
       .phone { border-radius: 0; width: 100%; min-height: 100vh; }
-      .agent { grid-template-columns: 108px 1fr; }
-      .hero-metrics div strong { font-size: 21px; }
+      .console-panel { grid-template-columns: 108px 1fr; }
+      .gauge { width: 104px; height: 104px; }
+      .readout strong { font-size: 16px; }
     }
   </style>
 </head>
@@ -611,7 +551,7 @@
           <span class="chip">整洁卡片</span>
           <span class="chip">中文主界面</span>
           <span class="chip">英文指标</span>
-          <span class="chip">动态训练助手</span>
+          <span class="chip">控制台仪表盘</span>
           <span class="chip">锁屏通知思路</span>
           <span class="chip">最小权限</span>
         </div>
@@ -619,6 +559,10 @@
           <button class="active" data-state="training">训练中</button>
           <button data-state="finished">已完成</button>
           <button data-state="error">异常</button>
+        </div>
+        <div class="state-buttons theme-buttons">
+          <button class="active" data-theme="normal">普通界面</button>
+          <button data-theme="glass">毛玻璃</button>
         </div>
       </section>
     </aside>
@@ -642,31 +586,21 @@
               </div>
               <div class="percent">58%</div>
             </div>
-            <div class="agent">
-              <div class="buddy">
-                <div class="shadow"></div>
-                <div class="chart-bubble"></div>
-                <div class="arm left"></div>
-                <div class="arm right"></div>
-                <div class="body"></div>
-                <div class="hair"></div>
-                <div class="head"></div>
-                <div class="eye left"></div>
-                <div class="eye right"></div>
-                <div class="mouth"></div>
-              </div>
-              <div class="agent-copy">
-                <strong id="agentTitle">训练助手正在巡航</strong>
-                <div class="subtitle" id="agentCopy">Best mIoU 78.89 · ETA 33分18秒</div>
-                <div class="bar"><span></span></div>
+            <div class="console-panel">
+              <div class="gauge"><strong id="gaugeValue">58%</strong></div>
+              <div class="console-copy">
+                <strong id="consoleTitle">训练任务运行中</strong>
+                <div class="console-line"><span>Epoch</span><b>174 / 300</b></div>
+                <div class="console-line"><span>ETA</span><b id="etaValue">33分18秒</b></div>
+                <div class="console-line"><span>Mode</span><b id="modeValue">训练中</b></div>
               </div>
             </div>
-          </div>
 
-          <div class="hero-metrics">
-            <div><span>Best mIoU</span><strong>78.89</strong></div>
-            <div><span>Best Epoch</span><strong>89</strong></div>
-            <div><span>Current</span><strong>78.43</strong></div>
+            <div class="readout-row">
+              <div class="readout"><span>Best mIoU</span><strong>78.89</strong></div>
+              <div class="readout"><span>Current</span><strong>78.43</strong></div>
+              <div class="readout"><span>Progress</span><strong>58%</strong></div>
+            </div>
           </div>
 
           <div class="metric-grid">
@@ -756,6 +690,7 @@
           <div class="card">
             <div class="settings-row"><div><b>后端地址</b><span>https://server.example.com:6006</span></div></div>
             <div class="settings-row"><div><b>访问 Token</b><span>已加密保存，输入时默认隐藏</span></div></div>
+            <div class="settings-row"><div><b>界面风格</b><span>普通 / 毛玻璃，可在设置中切换</span></div></div>
             <div class="settings-row"><div><b>通知栏训练状态</b><span>显示 Epoch、Best mIoU、ETA</span></div><div class="toggle"></div></div>
             <div class="settings-row"><div><b>刷新间隔</b><span>2 秒</span></div></div>
           </div>
@@ -771,7 +706,7 @@
             </div>
           </div>
           <div class="card">
-            <div class="settings-row"><div><b>关于应用</b><span>训迹 v0.7.19 · com.modeltest.monitor</span></div></div>
+            <div class="settings-row"><div><b>关于应用</b><span>训迹 v0.7.20 · com.modeltest.monitor</span></div></div>
             <div class="settings-row"><div><b>隐私说明</b><span>不采集通讯录、定位、相册；只连接用户配置的训练后端。</span></div></div>
           </div>
         </section>
@@ -788,8 +723,10 @@
   <script>
     const phone = document.getElementById("phone");
     const statusText = document.getElementById("statusText");
-    const agentTitle = document.getElementById("agentTitle");
-    const agentCopy = document.getElementById("agentCopy");
+    const consoleTitle = document.getElementById("consoleTitle");
+    const gaugeValue = document.getElementById("gaugeValue");
+    const etaValue = document.getElementById("etaValue");
+    const modeValue = document.getElementById("modeValue");
 
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
@@ -808,17 +745,31 @@
         phone.classList.add(button.dataset.state);
         if (button.dataset.state === "finished") {
           statusText.textContent = "已完成";
-          agentTitle.textContent = "训练助手完成汇报";
-          agentCopy.textContent = "Best mIoU 79.12 · 已保存历史曲线";
+          consoleTitle.textContent = "训练完成，结果已保存";
+          gaugeValue.textContent = "100%";
+          etaValue.textContent = "已完成";
+          modeValue.textContent = "已完成";
         } else if (button.dataset.state === "error") {
           statusText.textContent = "异常";
-          agentTitle.textContent = "训练助手发现异常";
-          agentCopy.textContent = "网络断连或服务端暂不可达，保留本地缓存";
+          consoleTitle.textContent = "连接异常，保留缓存";
+          gaugeValue.textContent = "--";
+          etaValue.textContent = "等待恢复";
+          modeValue.textContent = "异常";
         } else {
           statusText.textContent = "训练中";
-          agentTitle.textContent = "训练助手正在巡航";
-          agentCopy.textContent = "Best mIoU 78.89 · ETA 33分18秒";
+          consoleTitle.textContent = "训练任务运行中";
+          gaugeValue.textContent = "58%";
+          etaValue.textContent = "33分18秒";
+          modeValue.textContent = "训练中";
         }
+      });
+    });
+
+    document.querySelectorAll(".theme-buttons button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".theme-buttons button").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        document.body.classList.toggle("glass-mode", button.dataset.theme === "glass");
       });
     });
   </script>
