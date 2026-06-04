@@ -25,7 +25,7 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 推荐先用 pip 安装服务器端。学校服务器或国内机房如果直连 GitHub 很慢，优先用镜像 wheel：
 
 ```bash
-python3 -m pip install --user --upgrade "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.20/xunji_training_monitor-0.7.20-py3-none-any.whl"
+python3 -m pip install --user --upgrade "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.21/xunji_training_monitor-0.7.21-py3-none-any.whl"
 python3 -m monitorctl_py start
 python3 -m monitorctl_py connection
 ```
@@ -33,7 +33,7 @@ python3 -m monitorctl_py connection
 如果镜像不可用，可以换一个镜像前缀：
 
 ```bash
-python3 -m pip install --user --upgrade "https://gh.llkk.cc/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.20/xunji_training_monitor-0.7.20-py3-none-any.whl"
+python3 -m pip install --user --upgrade "https://gh.llkk.cc/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.21/xunji_training_monitor-0.7.21-py3-none-any.whl"
 ```
 
 如果你的服务器能直接访问 GitHub，也可以安装源码包：
@@ -296,7 +296,7 @@ App 会显示：
 - 指标曲线，带横坐标 epoch 和纵坐标数值
 - 通知栏和锁屏训练状态，可显示 epoch、Best 指标和 ETA
 - 训练完成提醒
-- 动态训练助手：训练中、完成、异常、等待会显示不同动作
+- 训练控制台仪表盘：训练中、完成、异常、等待会显示不同状态
 
 指标名称在 App 中优先使用英文，例如 `Loss`、`Decode Loss`、`mIoU`、`mDice`、`mAP`、`Accuracy`，这样更接近训练面板和论文实验记录的习惯。
 
@@ -309,11 +309,11 @@ App 会显示：
 - 手机通知栏会常驻显示训练状态。
 - 锁屏界面可以看到当前 epoch、Best 指标和 ETA。
 - 训练完成时会发送一次完成提醒。
-- 通知里最多显示 1-2 个指标，来源是 `首页指标` 中勾选的前两个。
+- 通知里最多显示 1-2 个指标，来源是 `显示指标` 中勾选的前两个。
 
-华为手表目前先通过“同步手机通知”的方式联动：在华为运动健康 App 里允许 Training Monitor 的通知同步到手表即可。这样不需要单独安装手表 App，也最稳定。
+智能手表目前先通过“同步手机通知”的方式联动：在手机或手表管理 App 里允许“训迹”的通知同步到手表即可。这样不需要单独安装手表 App，也最稳定。
 
-如果后续要做原生华为手表 App 或表盘组件，需要单独开发 HarmonyOS/华为穿戴侧应用，并接入华为开发者工具链。
+如果后续要做原生手表 App 或表盘组件，需要按具体手表平台单独开发并接入对应开发者工具链。
 
 ## 6. 离线缓存和历史数据
 

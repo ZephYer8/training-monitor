@@ -1635,7 +1635,7 @@ private fun SettingsScreen(
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
-        Text("配置服务器连接、刷新频率和首页指标。", color = Color(0xFF6B7280))
+        Text("配置服务器连接、刷新频率和显示指标。", color = Color(0xFF6B7280))
 
         SettingsCard(title = "服务器连接") {
             OutlinedTextField(
@@ -1716,7 +1716,7 @@ private fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("通知栏训练状态", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "开启后会用前台进度通知显示 epoch、Best 指标和 ETA；训练完成时提醒。锁屏和荣耀灵动胶囊是否展示由系统通知设置决定。",
+                        "开启后会用前台进度通知显示 epoch、Best 指标和 ETA；训练完成时提醒。锁屏、状态栏或系统实时状态展示由不同 Android 厂商的通知策略决定。",
                         color = Color(0xFF6B7280),
                     )
                 }
@@ -1732,7 +1732,6 @@ private fun SettingsScreen(
         }
 
         SettingsCard(title = "隐私与权限") {
-            Text("作者：Zephyer", fontWeight = FontWeight.SemiBold)
             Text(
                 "仅使用网络访问你配置的训练监控后端；开启通知后会使用通知和前台服务权限，用于通知栏、锁屏训练状态和训练完成提醒。",
                 color = Color(0xFF6B7280),
@@ -1778,7 +1777,7 @@ private fun SettingsScreen(
             }
         }
 
-        SettingsCard(title = "关于应用") {
+        SettingsCard(title = "关于我们") {
             Text("训迹 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
             Text("作者：Zephyer", color = Color(0xFF6B7280))
             Text("包名：${context.packageName}", color = Color(0xFF6B7280))
@@ -2648,7 +2647,7 @@ private fun createNotificationChannels(context: Context) {
             "训练状态与锁屏",
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "训练进行中的常驻状态、锁屏进度和系统胶囊候选通知"
+            description = "训练进行中的常驻状态、锁屏进度和系统通知展示"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             setShowBadge(true)
         },
