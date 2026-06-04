@@ -335,16 +335,31 @@ def infer_total_epochs(path: Path, fallback: int, rows: Optional[List[Metric]] =
 
     with path.open("r", encoding="utf-8", errors="ignore") as file:
         for line in file:
-            json_total = parse_total_from_json_line(line)
-            if json_total:
-                return json_total
-            match = TOTAL_RE.search(line) or MAX_ITER_RE.search(line)
-            if match:
-                return int(match.group(1))
+            total = parse_total_from_line(line)
+            if total:
+                return total
 
-    if rows:
-        return max(item[1] for item in rows)
-    return 300
+    return 0
+
+
+def parse_total_from_line(line: str) -> Optional[int]:
+    json_total = parse_total_from_json_line(line)
+    if json_total:
+        return json_total
+
+    match = TOTAL_RE.search(line) or MAX_ITER_RE.search(line)
+    if match:
+        return int(match.group(1))
+
+    epoch_match = EPOCH_RE.search(line)
+    if epoch_match:
+        return int(epoch_match.group(3))
+
+    iter_match = ITER_RE.search(line)
+    if iter_match:
+        return int(iter_match.group(3))
+
+    return None
 
 
 def parse_total_from_json_line(line: str) -> Optional[int]:

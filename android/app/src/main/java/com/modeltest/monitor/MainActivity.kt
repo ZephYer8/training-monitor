@@ -733,6 +733,19 @@ private fun Header(
 
 @Composable
 private fun ProgressHeroCard(status: TrainingStatus) {
+    val hasTotal = status.totalEpochs > 0
+    val progressText = if (hasTotal) {
+        "${(status.progress * 100).toInt()}%"
+    } else {
+        "--"
+    }
+    val epochText = if (hasTotal) {
+        "${status.epoch} / ${status.totalEpochs}"
+    } else {
+        "${status.epoch.takeIf { it > 0 } ?: "--"} / --"
+    }
+    val etaText = status.etaSeconds?.let { formatEta(it) } ?: "--"
+
     ElevatedCard(
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = Color.White),
@@ -756,19 +769,22 @@ private fun ProgressHeroCard(status: TrainingStatus) {
                 Column {
                     Text("训练进度", color = Color(0xFF6B7280))
                     Text(
-                        text = "${status.epoch} / ${status.totalEpochs}",
+                        text = epochText,
                         style = MaterialTheme.typography.headlineLarge,
                         fontWeight = FontWeight.Bold,
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = "${(status.progress * 100).toInt()}%",
+                        text = progressText,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleLarge,
                     )
-                    Text("预计剩余 ${formatEta(status.etaSeconds)}", color = Color(0xFF6B7280))
+                    Text(
+                        text = if (hasTotal) "预计剩余 $etaText" else "进度待估算",
+                        color = Color(0xFF6B7280),
+                    )
                 }
             }
 

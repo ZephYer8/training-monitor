@@ -7,6 +7,7 @@ from openmmlab_log import best_row, metric_should_minimize, parse_openmmlab_hist
 
 
 def write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text.strip() + "\n", encoding="utf-8")
     return path
 
@@ -56,12 +57,45 @@ def test_mmengine_json_log() -> None:
         )
 
         total_epochs, rows = parse_openmmlab_history(json_path, 0)
-        assert total_epochs == 2
+        assert total_epochs == 0
         assert rows[0][4]["loss"] == 1.2
         assert round(rows[0][4]["mIoU"], 2) == 75.60
         assert round(rows[0][4]["aAcc"], 2) == 88.00
         assert rows[1][0] == "Top1 Acc"
         assert rows[1][4]["Top5 Acc"] == 93.1
+
+
+def test_mmengine_scalars_json_without_total_stays_training() -> None:
+    with test_dir("mmengine-scalars") as tmp:
+        json_path = write(
+            tmp / "vis_data" / "scalars.json",
+            """
+            {"step": 10, "loss": 0.42, "decode.loss_ce": 0.31, "lr": 0.0001}
+            {"step": 20, "loss": 0.38, "decode.loss_ce": 0.26, "lr": 0.0001}
+            """,
+        )
+
+        total_epochs, rows = parse_openmmlab_history(json_path, 0)
+        assert total_epochs == 0
+        assert rows[-1][1] == 20
+        assert rows[-1][0] == "loss"
+        assert rows[-1][4]["loss"] == 0.38
+        assert rows[-1][4]["decode.loss_ce"] == 0.26
+
+
+def test_iter_total_is_read_from_text_log() -> None:
+    with test_dir("iter-total") as tmp:
+        log_path = write(
+            tmp / "iter.log",
+            """
+            06/02 20:00:00 - mmengine - INFO - Iter(train) [100/10000] lr: 1e-4 eta: 01:20:00 loss: 0.9
+            """,
+        )
+
+        total_epochs, rows = parse_openmmlab_history(log_path, 0)
+        assert total_epochs == 10000
+        assert rows[0][1] == 100
+        assert rows[0][4]["loss"] == 0.9
 
 
 def test_mmpose_metrics_and_minimize() -> None:
@@ -144,6 +178,8 @@ def test_auto_watch_skips_unparseable_latest_file() -> None:
 if __name__ == "__main__":
     test_mmdetection_text_log()
     test_mmengine_json_log()
+    test_mmengine_scalars_json_without_total_stays_training()
+    test_iter_total_is_read_from_text_log()
     test_mmpose_metrics_and_minimize()
     test_mmagic_mmocr_mmtracking_metrics()
     test_mmyolo_mmdet3d_reid_panoptic_metrics()
