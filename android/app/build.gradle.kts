@@ -23,8 +23,8 @@ android {
         applicationId = "com.modeltest.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 39
-        versionName = "0.7.22"
+        versionCode = 40
+        versionName = "0.7.23"
         manifestPlaceholders["usesCleartextTraffic"] = "true"
     }
 

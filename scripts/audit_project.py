@@ -147,6 +147,12 @@ def audit_branding_and_copy() -> None:
     main = checked_files["android/app/src/main/java/com/modeltest/monitor/MainActivity.kt"]
     if "SettingsCard(title = \"关于我们\")" not in main:
         fail("settings page must expose 关于我们 instead of test-device notes")
+    for internal_copy in ("后期申请", "软著", "上架时"):
+        if internal_copy in main:
+            fail(f"internal release-planning copy must not appear in App UI: {internal_copy}")
+    for required_copy in ("项目主页：github.com/ZephYer8/training-monitor", "反馈渠道：GitHub Issues 或应用市场反馈入口"):
+        if required_copy not in main:
+            fail(f"about-us page missing user-facing contact copy: {required_copy}")
     ok("app branding and generic user-facing copy")
 
 

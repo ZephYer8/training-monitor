@@ -1780,13 +1780,15 @@ private fun SettingsScreen(
         SettingsCard(title = "关于我们") {
             Text("训迹 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
             Text("作者：Zephyer", color = Color(0xFF6B7280))
-            Text("包名：${context.packageName}", color = Color(0xFF6B7280))
+            Text("应用标识：${context.packageName}", color = Color(0xFF6B7280))
+            Text("项目主页：github.com/ZephYer8/training-monitor", color = Color(0xFF6B7280))
+            Text("反馈渠道：GitHub Issues 或应用市场反馈入口", color = Color(0xFF6B7280))
             Text(
                 "本应用只连接你配置的训练监控后端，Token 加密保存在本机，不采集通讯录、定位、相册等个人信息。",
                 color = Color(0xFF6B7280),
             )
             Text(
-                "后期申请软著或上架时，可使用名称“训迹”与包名 ${context.packageName} 作为基础信息。",
+                "隐私与权限说明可在本页上方查看；正式分发时请以应用市场展示的隐私政策链接为准。",
                 color = Color(0xFF6B7280),
             )
         }
@@ -1845,6 +1847,8 @@ private fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                 Text("应用名称：训迹", fontWeight = FontWeight.SemiBold)
                 Text("作者：Zephyer")
                 Text("包名：com.modeltest.monitor")
+                Text("项目主页：github.com/ZephYer8/training-monitor")
+                Text("反馈渠道：GitHub Issues 或应用市场反馈入口")
                 Text("功能用途：连接你配置的训练监控后端，展示训练进度、指标曲线、最佳指标、预计剩余时间和训练完成提醒。")
                 Text("收集的信息：服务器地址、访问 Token、刷新间隔、勾选指标和最后一次训练状态缓存。")
                 Text("权限使用：网络权限用于访问训练监控后端；通知权限和前台服务用于通知栏、锁屏训练状态和完成提醒。")
