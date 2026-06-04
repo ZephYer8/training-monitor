@@ -31,6 +31,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Run project audit
+        run: python scripts/audit_project.py
+
       - name: Resolve signing mode
         run: |
           missing=0
