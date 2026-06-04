@@ -939,17 +939,20 @@ private fun GaugeDial(
             )
         }
 
-        drawContext.canvas.nativeCanvas.apply {
+        val valuePaint = Paint().apply {
             textAlign = Paint.Align.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textSize = 24.dp.toPx()
             color = android.graphics.Color.WHITE
-            drawText(centerText, size.width / 2f, size.height / 2f + 4.dp.toPx(), this)
+        }
+        val labelPaint = Paint().apply {
+            textAlign = Paint.Align.CENTER
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             textSize = 10.dp.toPx()
             color = android.graphics.Color.rgb(148, 163, 184)
-            drawText("PROGRESS", size.width / 2f, size.height / 2f + 24.dp.toPx(), this)
         }
+        drawContext.canvas.nativeCanvas.drawText(centerText, size.width / 2f, size.height / 2f + 4.dp.toPx(), valuePaint)
+        drawContext.canvas.nativeCanvas.drawText("PROGRESS", size.width / 2f, size.height / 2f + 24.dp.toPx(), labelPaint)
     }
 }
 
