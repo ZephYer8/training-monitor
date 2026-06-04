@@ -22,19 +22,40 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 ## 1. 快速开始
 
-推荐先用 pip 安装服务器端：
+推荐先用 pip 安装服务器端。学校服务器或国内机房如果直连 GitHub 很慢，优先用镜像 wheel：
 
 ```bash
-python3 -m pip install --user --upgrade https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-server.tar.gz
+python3 -m pip install --user --upgrade "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.16/xunji_training_monitor-0.7.16-py3-none-any.whl"
 python3 -m monitorctl_py start
 python3 -m monitorctl_py connection
 ```
 
-如果你的服务器已经把 `~/.local/bin` 加入 `PATH`，也可以直接运行：
+如果镜像不可用，可以换一个镜像前缀：
+
+```bash
+python3 -m pip install --user --upgrade "https://gh.llkk.cc/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.16/xunji_training_monitor-0.7.16-py3-none-any.whl"
+```
+
+如果你的服务器能直接访问 GitHub，也可以安装源码包：
+
+```bash
+python3 -m pip install --user --upgrade https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-server.tar.gz
+```
+
+注意：`pip -i 清华源` 只加速 PyPI 依赖，不会加速 `https://github.com/...` 这种文件下载。
+
+如果你的服务器已经把 `~/.local/bin` 加入 `PATH`，可以直接运行：
 
 ```bash
 training-monitor start
 training-monitor connection
+```
+
+如果出现 `training-monitor: command not found`，说明 pip 已经安装成功，但当前 shell 没加载 `~/.local/bin`。直接运行：
+
+```bash
+python3 -m monitorctl_py fix-path
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 如果服务器没有配置 pip，或者你想直接一键安装，在训练服务器上执行：
@@ -46,23 +67,23 @@ curl -fL https://github.com/ZephYer8/training-monitor/releases/latest/download/t
 这个命令不依赖 `raw.githubusercontent.com`。如果服务器访问 GitHub Release 很慢，可以手动指定服务端安装包地址。注意：镜像下载更快，但需要你信任这个镜像源。
 
 ```bash
-TRAINING_MONITOR_SERVER_BUNDLE_URL="https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-server.tar.gz" \
-curl -fL https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-install-server.sh | bash
+curl -fL "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-install-server.sh" \
+  | TRAINING_MONITOR_GITHUB_PROXY="https://gh-proxy.com" bash
 ```
 
 安装完成后查看连接信息：
 
 ```bash
-training-monitor connection
+python3 -m monitorctl_py connection
 ```
 
-如果提示 `training-monitor: command not found`，先运行完整路径：
+如果需要诊断安装状态：
 
 ```bash
-/root/autodl-tmp/training-monitor/scripts/monitorctl status
+python3 -m monitorctl_py doctor
 ```
 
-root 用户新版默认会同时创建：
+root 用户使用一键脚本时，默认会同时创建：
 
 ```text
 /usr/local/bin/training-monitor
@@ -178,6 +199,8 @@ training-monitor config path
 ```
 
 ## 4. 常用命令
+
+下面都写成 `training-monitor ...`。如果服务器提示 `training-monitor: command not found`，把前缀换成 `python3 -m monitorctl_py ...`，或者先执行 `python3 -m monitorctl_py fix-path`。
 
 启动服务：
 

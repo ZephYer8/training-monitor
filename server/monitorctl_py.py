@@ -3,7 +3,9 @@ import json
 import os
 from pathlib import Path
 import secrets
+import shutil
 import signal
+import site
 import socket
 import subprocess
 import sys
@@ -230,7 +232,7 @@ def start(_: argparse.Namespace) -> None:
             print(f"server started, pid={pid}, port={current_port}")
         else:
             print(f"server started but health check is not ready yet, pid={pid}, port={current_port}")
-            print("run: training-monitor logs")
+            print("run: python3 -m monitorctl_py logs")
 
     if cfg.get("AUTO_WATCH", "1") == "1":
         auto_watch(argparse.Namespace())
@@ -370,6 +372,24 @@ def config_cmd(args: argparse.Namespace) -> None:
         print(f"saved {args.key}")
 
 
+def prompt_value(label: str, current: str) -> str:
+    value = input(f"{label} [{current}]: ").strip()
+    return value or current
+
+
+def setup(_: argparse.Namespace) -> None:
+    cfg = read_config()
+    cfg["PORT"] = prompt_value("Port", cfg.get("PORT", "6006"))
+    cfg["PUBLIC_URL"] = prompt_value("Public URL", cfg.get("PUBLIC_URL") or detect_public_url())
+    cfg["LOG_ROOTS"] = prompt_value("Log roots", cfg.get("LOG_ROOTS", DEFAULT_LOG_ROOTS))
+    cfg["LOG_TYPE"] = prompt_value("Log type auto/openmmlab/yolo", cfg.get("LOG_TYPE", "auto"))
+    cfg["AUTO_WATCH"] = prompt_value("Auto watch 1/0", cfg.get("AUTO_WATCH", "1"))
+    cfg["CORS_ORIGINS"] = prompt_value("CORS origins, usually empty", cfg.get("CORS_ORIGINS", ""))
+    save_config(cfg)
+    print(f"saved: {CONFIG_FILE}")
+    connection(_)
+
+
 def logs(_: argparse.Namespace) -> None:
     for label, path in (("backend log", LOG_DIR / "backend.log"), ("watcher log", LOG_DIR / "watcher.log")):
         print(f"{label}: {path}")
@@ -396,6 +416,83 @@ def diagnose(_: argparse.Namespace) -> None:
     raise SystemExit(subprocess.call(command, env={**os.environ, "MONITOR_TOKEN": token_init()}))
 
 
+def user_bin_dir() -> Path:
+    return Path(site.USER_BASE) / ("Scripts" if os.name == "nt" else "bin")
+
+
+def shell_profiles() -> List[Path]:
+    if os.name == "nt":
+        return []
+    return [
+        Path.home() / ".bashrc",
+        Path.home() / ".profile",
+        Path.home() / ".bash_profile",
+        Path.home() / ".zshrc",
+    ]
+
+
+def path_has_user_bin() -> bool:
+    user_bin = str(user_bin_dir())
+    return user_bin in os.getenv("PATH", "").split(os.pathsep)
+
+
+def fix_path(_: argparse.Namespace) -> None:
+    user_bin = user_bin_dir()
+    user_bin.mkdir(parents=True, exist_ok=True)
+
+    if os.name == "nt":
+        print(f"script directory: {user_bin}")
+        print("On Windows, add this directory to PATH manually if training-monitor is not found.")
+        return
+
+    line = f'export PATH="{user_bin}:$PATH"'
+    marker = "training-monitor/bin-path"
+    changed = []
+    for profile in shell_profiles():
+        try:
+            profile.touch(exist_ok=True)
+            text = profile.read_text(encoding="utf-8", errors="ignore")
+            if marker not in text and str(user_bin) not in text:
+                with profile.open("a", encoding="utf-8") as file:
+                    file.write(f"\n# {marker}\n{line}\n")
+                changed.append(str(profile))
+        except OSError:
+            continue
+
+    print(f"script directory: {user_bin}")
+    if changed:
+        print("updated shell profiles:")
+        for profile in changed:
+            print(f"- {profile}")
+        print(f'run now: export PATH="{user_bin}:$PATH"')
+        print("or reopen your terminal.")
+    elif path_has_user_bin():
+        print("PATH is already configured.")
+    else:
+        print("shell profile already contains PATH setting, but current terminal has not loaded it.")
+        print(f'run now: export PATH="{user_bin}:$PATH"')
+
+
+def doctor(_: argparse.Namespace) -> None:
+    command_path = shutil.which("training-monitor")
+    user_bin = user_bin_dir()
+    print("Training Monitor diagnosis")
+    print(f"python: {sys.executable}")
+    print(f"python version: {sys.version.split()[0]}")
+    print(f"install home: {BASE}")
+    print(f"script directory: {user_bin}")
+    print(f"training-monitor command: {command_path or 'not found in PATH'}")
+    print(f"script directory in PATH: {'yes' if path_has_user_bin() else 'no'}")
+    print(f"config file: {CONFIG_FILE}")
+    print()
+    if not command_path:
+        print("recommended fix:")
+        print("python3 -m monitorctl_py fix-path")
+        print(f'export PATH="{user_bin}:$PATH"')
+    print("module command always works after pip install:")
+    print("python3 -m monitorctl_py connection")
+
+
 def setup_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="training-monitor")
     sub = parser.add_subparsers(dest="command")
@@ -407,14 +504,23 @@ def setup_parser() -> argparse.ArgumentParser:
     sub.add_parser("token-init").set_defaults(func=lambda args: print(token_init()))
     sub.add_parser("token").set_defaults(func=lambda args: print(token_init()))
     sub.add_parser("rotate-token").set_defaults(func=rotate_token)
+    sub.add_parser("setup").set_defaults(func=setup)
     sub.add_parser("auto-watch").set_defaults(func=auto_watch)
+    sub.add_parser("auto-mmseg").set_defaults(func=auto_watch)
     sub.add_parser("diagnose").set_defaults(func=diagnose)
+    sub.add_parser("doctor").set_defaults(func=doctor)
+    sub.add_parser("fix-path").set_defaults(func=fix_path)
     sub.add_parser("logs").set_defaults(func=logs)
 
     watch = sub.add_parser("watch-file")
     watch.add_argument("path")
     watch.add_argument("total_epochs", nargs="?", type=int)
     watch.set_defaults(func=watch_file)
+
+    watch_mmseg = sub.add_parser("watch-mmseg")
+    watch_mmseg.add_argument("path")
+    watch_mmseg.add_argument("total_epochs", nargs="?", type=int)
+    watch_mmseg.set_defaults(func=watch_file)
 
     config = sub.add_parser("config")
     config_sub = config.add_subparsers(dest="config_action")

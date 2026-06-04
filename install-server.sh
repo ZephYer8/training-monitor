@@ -3,7 +3,11 @@ set -euo pipefail
 umask 077
 
 REPO="${TRAINING_MONITOR_REPO_SLUG:-ZephYer8/training-monitor}"
-BUNDLE_URL="${TRAINING_MONITOR_SERVER_BUNDLE_URL:-https://github.com/$REPO/releases/latest/download/training-monitor-server.tar.gz}"
+DEFAULT_BUNDLE_URL="https://github.com/$REPO/releases/latest/download/training-monitor-server.tar.gz"
+if [ -n "${TRAINING_MONITOR_GITHUB_PROXY:-}" ]; then
+    DEFAULT_BUNDLE_URL="${TRAINING_MONITOR_GITHUB_PROXY%/}/$DEFAULT_BUNDLE_URL"
+fi
+BUNDLE_URLS="${TRAINING_MONITOR_SERVER_BUNDLE_URLS:-${TRAINING_MONITOR_SERVER_BUNDLE_URL:-$DEFAULT_BUNDLE_URL}}"
 TMP_DIR="$(mktemp -d)"
 ARCHIVE_FILE="$TMP_DIR/training-monitor-server.tar.gz"
 
@@ -12,7 +16,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-download() {
+download_one() {
     local url="$1"
     echo "[training-monitor] downloading server bundle: $url"
     if command -v curl >/dev/null 2>&1; then
@@ -25,7 +29,22 @@ download() {
     fi
 }
 
-download "$BUNDLE_URL"
+download() {
+    local url
+    for url in $BUNDLE_URLS; do
+        if download_one "$url"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+download || {
+    echo "[training-monitor] failed to download server bundle" >&2
+    echo "[training-monitor] if GitHub is slow, use a proxy, for example:" >&2
+    echo "[training-monitor] TRAINING_MONITOR_GITHUB_PROXY=https://gh-proxy.com bash training-monitor-install-server.sh" >&2
+    exit 1
+}
 tar -xzf "$ARCHIVE_FILE" -C "$TMP_DIR"
 
 [ -f "$TMP_DIR/scripts/install.sh" ] || {
