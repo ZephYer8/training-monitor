@@ -145,7 +145,7 @@ def audit_branding_and_copy() -> None:
                 fail(f"device/vendor-specific copy found in {path}: {term}")
 
     main = checked_files["android/app/src/main/java/com/modeltest/monitor/MainActivity.kt"]
-    if "SettingsCard(title = \"关于我们\")" not in main:
+    if "SettingsCard(title = \"关于我们\"" not in main:
         fail("settings page must expose 关于我们 instead of test-device notes")
     for internal_copy in ("后期申请", "软著", "上架时"):
         if internal_copy in main:

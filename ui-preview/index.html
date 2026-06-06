@@ -496,28 +496,44 @@
 
     .glass-mode {
       background:
-        radial-gradient(circle at 18% 6%, rgba(47, 110, 234, .18), transparent 32%),
-        radial-gradient(circle at 84% 18%, rgba(49, 164, 85, .14), transparent 28%),
-        linear-gradient(180deg, #f8fbff 0%, #eaf2ff 48%, #f6f8ff 100%);
+        radial-gradient(circle at 18% 4%, rgba(255, 255, 255, .86), transparent 30%),
+        radial-gradient(circle at 84% 16%, rgba(37, 99, 235, .24), transparent 31%),
+        radial-gradient(circle at 14% 76%, rgba(167, 139, 250, .22), transparent 34%),
+        radial-gradient(circle at 88% 86%, rgba(34, 197, 94, .20), transparent 30%),
+        linear-gradient(145deg, #fbfdff 0%, #eaf2ff 48%, #f9f5ff 100%);
+      background-attachment: fixed;
     }
 
     .glass-mode .card,
     .glass-mode .metric,
     .glass-mode .design-card {
-      background: rgba(255, 255, 255, .72);
-      border-color: rgba(255, 255, 255, .75);
-      box-shadow: 0 20px 44px rgba(15, 23, 42, .10);
-      backdrop-filter: blur(18px);
+      background: rgba(255, 255, 255, .58);
+      border-color: rgba(255, 255, 255, .88);
+      box-shadow:
+        0 22px 58px rgba(31, 41, 80, .14),
+        inset 0 1px 0 rgba(255, 255, 255, .78);
+      backdrop-filter: blur(28px) saturate(1.65);
     }
 
     .glass-mode .console-panel {
-      background: rgba(15, 23, 42, .88);
-      border-color: rgba(255, 255, 255, .16);
-      backdrop-filter: blur(16px);
+      background: rgba(15, 23, 42, .74);
+      border-color: rgba(255, 255, 255, .24);
+      box-shadow:
+        0 18px 42px rgba(15, 23, 42, .24),
+        inset 0 1px 0 rgba(255, 255, 255, .18);
+      backdrop-filter: blur(24px) saturate(1.45);
     }
 
     .glass-mode .readout {
-      background: rgba(248, 250, 252, .82);
+      background: rgba(248, 250, 252, .62);
+      border-color: rgba(255, 255, 255, .72);
+    }
+
+    .glass-mode .pill-button,
+    .glass-mode .tab,
+    .glass-mode .settings-row {
+      background: rgba(255, 255, 255, .46);
+      backdrop-filter: blur(22px) saturate(1.4);
     }
 
     @media (max-width: 900px) {
@@ -706,7 +722,7 @@
             </div>
           </div>
           <div class="card">
-            <div class="settings-row"><div><b>关于我们</b><span>训迹 v0.7.24 · 作者 Zephyer · 项目主页与反馈渠道</span></div></div>
+            <div class="settings-row"><div><b>关于我们</b><span>训迹 v0.7.25 · 作者 Zephyer · 项目主页与反馈渠道</span></div></div>
             <div class="settings-row"><div><b>隐私说明</b><span>不采集通讯录、定位、相册；只连接用户配置的训练后端。</span></div></div>
           </div>
         </section>
