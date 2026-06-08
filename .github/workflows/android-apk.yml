@@ -18,6 +18,9 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      APP_PRIVACY_POLICY_URL: ${{ vars.APP_PRIVACY_POLICY_URL }}
+      APP_CONTACT_EMAIL: ${{ vars.APP_CONTACT_EMAIL }}
+      APP_BEIAN_ID: ${{ vars.APP_BEIAN_ID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -34,28 +37,43 @@ jobs:
       - name: Run project audit
         run: python scripts/audit_project.py
 
-      - name: Resolve signing mode
+      - name: Resolve signing and market readiness
         run: |
-          missing=0
           present=0
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
             value="${!name:-}"
             if [ -n "$value" ]; then
               present=$((present + 1))
-            else
-              missing=$((missing + 1))
             fi
           done
 
           if [ "$present" -eq 4 ]; then
+            HAS_RELEASE_SIGNING=true
             echo "HAS_RELEASE_SIGNING=true" >> "$GITHUB_ENV"
             echo "APK_SIGNING_MODE=official-release" >> "$GITHUB_ENV"
           elif [ "$present" -eq 0 ]; then
+            HAS_RELEASE_SIGNING=false
             echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
             echo "APK_SIGNING_MODE=debug-test" >> "$GITHUB_ENV"
           else
             echo "::error::Android signing secrets are incomplete. Set ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD together."
             exit 1
+          fi
+
+          market_missing=()
+          [ "${HAS_RELEASE_SIGNING:-false}" = "true" ] || market_missing+=("release signing")
+          [ -n "${APP_PRIVACY_POLICY_URL:-}" ] || market_missing+=("APP_PRIVACY_POLICY_URL")
+          [ -n "${APP_CONTACT_EMAIL:-}" ] || market_missing+=("APP_CONTACT_EMAIL")
+          [ -n "${APP_BEIAN_ID:-}" ] || market_missing+=("APP_BEIAN_ID")
+
+          if [ "${#market_missing[@]}" -eq 0 ]; then
+            echo "MARKET_READY=true" >> "$GITHUB_ENV"
+            echo "MARKET_READY_NOTE=Release signing, privacy policy, contact and beian metadata are configured." >> "$GITHUB_ENV"
+          else
+            echo "MARKET_READY=false" >> "$GITHUB_ENV"
+            printf -v joined '%s, ' "${market_missing[@]}"
+            joined="${joined%, }"
+            echo "MARKET_READY_NOTE=Missing app-market requirements: $joined." >> "$GITHUB_ENV"
           fi
 
       - name: Prepare release signing
@@ -72,16 +90,22 @@ jobs:
             cp android/app/build/outputs/apk/release/app-release.apk training-monitor.apk
             {
               echo "signing_mode=official-release"
-              echo "market_ready=true"
-              echo "note=Built with configured release keystore secrets."
+              echo "market_ready=$MARKET_READY"
+              echo "privacy_policy_url=${APP_PRIVACY_POLICY_URL:-}"
+              echo "contact_email=${APP_CONTACT_EMAIL:-}"
+              echo "app_beian_id=${APP_BEIAN_ID:-}"
+              echo "note=${MARKET_READY_NOTE:-Built with configured release keystore secrets.}"
             } > training-monitor-build-info.txt
           else
             (cd android && ./gradlew :app:assembleDebug)
             cp android/app/build/outputs/apk/debug/app-debug.apk training-monitor.apk
             {
               echo "signing_mode=debug-test"
-              echo "market_ready=false"
-              echo "note=No release keystore secrets were configured. This APK is for testing and direct installation only, not for app-market submission."
+              echo "market_ready=$MARKET_READY"
+              echo "privacy_policy_url=${APP_PRIVACY_POLICY_URL:-}"
+              echo "contact_email=${APP_CONTACT_EMAIL:-}"
+              echo "app_beian_id=${APP_BEIAN_ID:-}"
+              echo "note=${MARKET_READY_NOTE:-No release keystore secrets were configured. This APK is for testing and direct installation only, not for app-market submission.}"
             } > training-monitor-build-info.txt
           fi
 

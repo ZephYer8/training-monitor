@@ -106,6 +106,27 @@ def audit_gradle() -> None:
     ok("Android Gradle release/debug settings")
 
 
+def audit_release_workflow() -> None:
+    workflow = text(".github/workflows/android-apk.yml")
+    required = {
+        "APP_PRIVACY_POLICY_URL": "privacy policy metadata",
+        "APP_CONTACT_EMAIL": "contact metadata",
+        "APP_BEIAN_ID": "beian metadata",
+        "MARKET_READY": "market readiness flag",
+        "MARKET_READY_NOTE": "market readiness note",
+        "market_ready=$MARKET_READY": "build info market readiness is computed",
+        "privacy_policy_url=${APP_PRIVACY_POLICY_URL:-}": "build info privacy policy url",
+        "contact_email=${APP_CONTACT_EMAIL:-}": "build info contact email",
+        "app_beian_id=${APP_BEIAN_ID:-}": "build info beian id",
+    }
+    for needle, label in required.items():
+        if needle not in workflow:
+            fail(f"missing release workflow setting: {label}")
+    if 'echo "market_ready=true"' in workflow:
+        fail("release workflow must not hard-code market_ready=true")
+    ok("Android release workflow market readiness metadata")
+
+
 def version_from_gradle() -> str:
     match = re.search(r'versionName\s*=\s*"([^"]+)"', text("android/app/build.gradle.kts"))
     if not match:
@@ -216,6 +237,7 @@ def main() -> None:
     audit_manifest()
     audit_backup_rules()
     audit_gradle()
+    audit_release_workflow()
     audit_versions()
     audit_branding_and_copy()
     audit_icon_assets()

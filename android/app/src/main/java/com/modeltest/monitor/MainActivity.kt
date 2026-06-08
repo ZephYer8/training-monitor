@@ -24,6 +24,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,12 +34,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -66,6 +69,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -81,6 +86,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -338,17 +345,75 @@ private val ChartColors = listOf(
 
 
 private fun glassPanelColor(glassStyle: Boolean): Color {
-    return if (glassStyle) Color(0xCFFFFFFF) else Color.White
+    return if (glassStyle) Color(0x98FFFFFF) else Color.White
 }
 
 
 private fun glassPanelBorder(glassStyle: Boolean): BorderStroke? {
-    return if (glassStyle) BorderStroke(1.dp, Color(0xBFFFFFFF)) else null
+    return if (glassStyle) BorderStroke(1.dp, Color(0xDDFFFFFF)) else null
 }
 
 
 private fun glassFieldColor(glassStyle: Boolean): Color {
-    return if (glassStyle) Color(0x99FFFFFF) else Color.White
+    return if (glassStyle) Color(0xA8FFFFFF) else Color.White
+}
+
+
+private fun Modifier.glassMaterial(glassStyle: Boolean, radius: Dp): Modifier {
+    if (!glassStyle) return this
+    return drawWithContent {
+        val corner = CornerRadius(radius.toPx(), radius.toPx())
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.22f),
+                    Color.White.copy(alpha = 0.06f),
+                    Color.Transparent,
+                ),
+                startY = 0f,
+                endY = size.height * 0.75f,
+            ),
+            cornerRadius = corner,
+        )
+        drawContent()
+        drawRoundRect(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.76f),
+                    Color.White.copy(alpha = 0.18f),
+                    Color(0xFF93C5FD).copy(alpha = 0.18f),
+                ),
+                start = Offset.Zero,
+                end = Offset(size.width, size.height),
+            ),
+            cornerRadius = corner,
+            style = Stroke(width = 1.dp.toPx()),
+        )
+    }
+}
+
+
+private fun Modifier.darkGlassMaterial(glassStyle: Boolean, radius: Dp): Modifier {
+    if (!glassStyle) return this
+    return drawWithContent {
+        val corner = CornerRadius(radius.toPx(), radius.toPx())
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.11f),
+                    Color.White.copy(alpha = 0.03f),
+                    Color.Transparent,
+                ),
+            ),
+            cornerRadius = corner,
+        )
+        drawContent()
+        drawRoundRect(
+            color = Color.White.copy(alpha = 0.18f),
+            cornerRadius = corner,
+            style = Stroke(width = 1.dp.toPx()),
+        )
+    }
 }
 
 
@@ -630,9 +695,10 @@ private fun AppBackdrop(glassStyle: Boolean) {
     val background = if (glassStyle) {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xFFF8FBFF),
-                Color(0xFFEAF2FF),
-                Color(0xFFF7F2FF),
+                Color(0xFFFCFDFF),
+                Color(0xFFEAF3FF),
+                Color(0xFFF8F3FF),
+                Color(0xFFEFFAF6),
             ),
             start = Offset.Zero,
             end = Offset(900f, 1600f),
@@ -654,24 +720,34 @@ private fun AppBackdrop(glassStyle: Boolean) {
         if (glassStyle) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 drawCircle(
-                    color = Color(0x55FFFFFF),
+                    color = Color(0xCCFFFFFF),
                     radius = size.width * 0.52f,
                     center = Offset(size.width * 0.08f, size.height * 0.08f),
                 )
                 drawCircle(
-                    color = Color(0x333B82F6),
-                    radius = size.width * 0.42f,
-                    center = Offset(size.width * 0.95f, size.height * 0.18f),
+                    color = Color(0x453B82F6),
+                    radius = size.width * 0.48f,
+                    center = Offset(size.width * 0.95f, size.height * 0.14f),
                 )
                 drawCircle(
-                    color = Color(0x2822C55E),
-                    radius = size.width * 0.46f,
-                    center = Offset(size.width * 0.88f, size.height * 0.86f),
+                    color = Color(0x3022C55E),
+                    radius = size.width * 0.48f,
+                    center = Offset(size.width * 0.90f, size.height * 0.84f),
                 )
                 drawCircle(
-                    color = Color(0x26A78BFA),
+                    color = Color(0x34A78BFA),
                     radius = size.width * 0.38f,
                     center = Offset(size.width * 0.12f, size.height * 0.72f),
+                )
+                drawCircle(
+                    color = Color(0x2E06B6D4),
+                    radius = size.width * 0.30f,
+                    center = Offset(size.width * 0.34f, size.height * 0.34f),
+                )
+                drawCircle(
+                    color = Color(0x38FFFFFF),
+                    radius = size.width * 0.22f,
+                    center = Offset(size.width * 0.68f, size.height * 0.55f),
                 )
             }
         }
@@ -820,8 +896,8 @@ private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
     val best = primaryMetric?.let { status.bestMetrics[it] }
     val bestEpoch = primaryMetric?.let { status.bestEpochs[it] }
     val cardColor = glassPanelColor(glassStyle)
-    val consoleColor = if (glassStyle) Color(0xD90F172A) else Color(0xFF0F172A)
-    val progressTrackColor = if (glassStyle) Color(0x99BFDBFE) else Color(0xFFE0E7FF)
+    val consoleColor = if (glassStyle) Color(0xB80F172A) else Color(0xFF0F172A)
+    val progressTrackColor = if (glassStyle) Color(0x78BFDBFE) else Color(0xFFE0E7FF)
     val progressText = if (hasTotal) {
         "${(status.progress * 100).toInt()}%"
     } else {
@@ -840,7 +916,9 @@ private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
         color = cardColor,
         border = glassPanelBorder(glassStyle),
         shadowElevation = if (glassStyle) 14.dp else 2.dp,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassMaterial(glassStyle, if (glassStyle) 24.dp else 10.dp),
     ) {
         Column(
             modifier = Modifier.padding(if (glassStyle) 20.dp else 18.dp),
@@ -851,13 +929,18 @@ private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "训练控制台",
                         color = Color(0xFF2563EB),
                         fontWeight = FontWeight.Bold,
                     )
-                    Text("实时监测 Epoch、Best 指标和 ETA", color = Color(0xFF6B7280))
+                    Text(
+                        "实时监测 Epoch、Best 指标和 ETA",
+                        color = Color(0xFF6B7280),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 ConsoleSignal(status.status)
             }
@@ -867,7 +950,9 @@ private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
                 color = consoleColor,
                 border = if (glassStyle) BorderStroke(1.dp, Color(0x33FFFFFF)) else null,
                 shadowElevation = if (glassStyle) 10.dp else 0.dp,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .darkGlassMaterial(glassStyle, if (glassStyle) 22.dp else 10.dp),
             ) {
                 Row(
                     modifier = Modifier
@@ -947,9 +1032,12 @@ private fun ConsoleSignal(status: String) {
         shape = RoundedCornerShape(50),
         color = color.copy(alpha = 0.12f),
         border = BorderStroke(1.dp, color.copy(alpha = 0.22f)),
+        modifier = Modifier.widthIn(min = 78.dp),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -962,6 +1050,8 @@ private fun ConsoleSignal(status: String) {
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f),
             )
         }
     }
@@ -1734,14 +1824,20 @@ private fun SettingsScreen(
                 value = draftUrl,
                 onValueChange = onUrlChange,
                 label = { Text("后端地址") },
-                placeholder = { Text("10.0.0.2:6006") },
-                supportingText = { Text("支持内网 IP、域名或 HTTPS；不写协议时默认使用 http://") },
+                placeholder = { Text("10.0.0.2:6006 或 https://example.com") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 glassStyle = glassStyle,
+            )
+            Text(
+                "支持内网 IP、域名或 HTTPS；不写协议时默认使用 http://。",
+                color = Color(0xFF6B7280),
+                style = MaterialTheme.typography.bodySmall,
             )
             if (normalizeBaseUrl(draftUrl).startsWith("http://")) {
                 Text(
                     "当前使用 HTTP，适合内网或临时测试；公网长期使用建议配置 HTTPS，避免 Token 在网络中被截获。",
                     color = Color(0xFFB45309),
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
             MonitorTextField(
@@ -1750,6 +1846,7 @@ private fun SettingsScreen(
                 label = { Text("访问 Token") },
                 placeholder = { Text("从 training-monitor connection 获取") },
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 glassStyle = glassStyle,
             )
             Row(
@@ -1776,12 +1873,14 @@ private fun SettingsScreen(
                     selected = uiStyle != "glass",
                     onClick = { onUiStyleChange("normal") },
                     modifier = Modifier.weight(1f),
+                    glassStyle = glassStyle,
                 )
                 MetricChip(
                     text = "毛玻璃",
                     selected = uiStyle == "glass",
                     onClick = { onUiStyleChange("glass") },
                     modifier = Modifier.weight(1f),
+                    glassStyle = glassStyle,
                 )
             }
         }
@@ -1795,6 +1894,7 @@ private fun SettingsScreen(
                         selected = refreshSeconds == seconds,
                         onClick = { onRefreshSecondsChange(seconds) },
                         modifier = Modifier.weight(1f),
+                        glassStyle = glassStyle,
                     )
                 }
             }
@@ -1970,6 +2070,7 @@ private fun MonitorTextField(
     placeholder: @Composable (() -> Unit)? = null,
     supportingText: @Composable (() -> Unit)? = null,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     glassStyle: Boolean,
 ) {
     OutlinedTextField(
@@ -1979,6 +2080,7 @@ private fun MonitorTextField(
         placeholder = placeholder,
         supportingText = supportingText,
         visualTransformation = visualTransformation,
+        keyboardOptions = keyboardOptions,
         singleLine = true,
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
@@ -1989,7 +2091,9 @@ private fun MonitorTextField(
             focusedLabelColor = Color(0xFF2563EB),
             cursorColor = Color(0xFF2563EB),
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp),
     )
 }
 
@@ -1999,8 +2103,9 @@ private fun ConnectionMessage(message: String, glassStyle: Boolean) {
     val isError = message.startsWith("连接失败")
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = if (isError) Color(0xFFFFF1F2) else if (glassStyle) Color(0x99EFF6FF) else Color(0xFFF8FAFC),
-        border = BorderStroke(1.dp, if (isError) Color(0xFFFECACA) else if (glassStyle) Color(0x99FFFFFF) else Color(0xFFE5E7EB)),
+        color = if (isError) Color(0xFFFFF1F2) else if (glassStyle) Color(0x96FFFFFF) else Color(0xFFF8FAFC),
+        border = BorderStroke(1.dp, if (isError) Color(0xFFFECACA) else if (glassStyle) Color(0xC6FFFFFF) else Color(0xFFE5E7EB)),
+        modifier = Modifier.glassMaterial(glassStyle, 14.dp),
     ) {
         Text(
             message,
@@ -2018,7 +2123,9 @@ private fun SettingsCard(title: String, glassStyle: Boolean, content: @Composabl
         color = glassPanelColor(glassStyle),
         border = glassPanelBorder(glassStyle),
         shadowElevation = if (glassStyle) 12.dp else 1.dp,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassMaterial(glassStyle, if (glassStyle) 24.dp else 10.dp),
     ) {
         Column(
             modifier = Modifier.padding(if (glassStyle) 18.dp else 16.dp),
@@ -2032,15 +2139,32 @@ private fun SettingsCard(title: String, glassStyle: Boolean, content: @Composabl
 
 
 @Composable
-private fun MetricChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun MetricChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    glassStyle: Boolean = false,
+) {
     Surface(
-        color = if (selected) Color(0xFFEFF6FF) else Color.White,
+        color = when {
+            selected && glassStyle -> Color(0xDDEFF6FF)
+            selected -> Color(0xFFEFF6FF)
+            glassStyle -> Color(0x8CFFFFFF)
+            else -> Color.White
+        },
         contentColor = if (selected) Color(0xFF2563EB) else Color(0xFF374151),
         shape = RoundedCornerShape(50),
-        modifier = modifier.clickable(onClick = onClick),
+        modifier = modifier
+            .clickable(onClick = onClick)
+            .glassMaterial(glassStyle, 50.dp),
         border = BorderStroke(
             width = 1.dp,
-            color = if (selected) Color(0xFF2563EB) else Color(0xFFE5E7EB),
+            color = when {
+                selected -> Color(0xFF2563EB)
+                glassStyle -> Color(0xCCFFFFFF)
+                else -> Color(0xFFE5E7EB)
+            },
         ),
     ) {
         Text(
@@ -2084,12 +2208,14 @@ private fun StatusPill(status: String) {
         color = color.copy(alpha = 0.12f),
         contentColor = color,
         shape = RoundedCornerShape(50),
+        modifier = Modifier.widthIn(min = 76.dp),
     ) {
         Text(
             text = statusText(status),
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
@@ -2102,7 +2228,9 @@ private fun EmptyCard(title: String, body: String, glassStyle: Boolean) {
         shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
         colors = CardDefaults.elevatedCardColors(containerColor = glassPanelColor(glassStyle)),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (glassStyle) 4.dp else 1.dp),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .glassMaterial(glassStyle, if (glassStyle) 24.dp else 10.dp),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -2118,9 +2246,10 @@ private fun EmptyCard(title: String, body: String, glassStyle: Boolean) {
 @Composable
 private fun BottomTabs(current: AppPage, glassStyle: Boolean, onChange: (AppPage) -> Unit) {
     Surface(
-        color = if (glassStyle) Color(0xCCFFFFFF) else Color.White,
-        border = if (glassStyle) BorderStroke(1.dp, Color(0x99FFFFFF)) else null,
+        color = if (glassStyle) Color(0xB8FFFFFF) else Color.White,
+        border = if (glassStyle) BorderStroke(1.dp, Color(0xE6FFFFFF)) else null,
         shadowElevation = if (glassStyle) 14.dp else 4.dp,
+        modifier = Modifier.glassMaterial(glassStyle, 24.dp),
     ) {
         Row(
             modifier = Modifier
@@ -2136,6 +2265,7 @@ private fun BottomTabs(current: AppPage, glassStyle: Boolean, onChange: (AppPage
                     selected = current == page,
                     onClick = { onChange(page) },
                     modifier = Modifier.weight(1f),
+                    glassStyle = glassStyle,
                 )
             }
         }
