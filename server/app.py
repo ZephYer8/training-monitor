@@ -1,5 +1,6 @@
 from datetime import datetime
 import hmac
+import math
 import os
 from pathlib import Path
 from typing import Dict, Literal, Optional
@@ -12,19 +13,28 @@ from pydantic import BaseModel, Field
 
 DATA_FILE = Path(os.getenv("TRAINING_MONITOR_STATE_FILE", Path(__file__).with_name("state.json")))
 MONITOR_TOKEN = os.getenv("MONITOR_TOKEN", "")
-CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("TRAINING_MONITOR_CORS_ORIGINS", "").split(",")
-    if origin.strip()
-]
+MAX_METRICS_PER_UPDATE = 64
+MAX_METRIC_NAME_LENGTH = 64
+MAX_RUN_ID_LENGTH = 128
+
+
+def parse_cors_origins(raw: str) -> list[str]:
+    return [
+        origin
+        for origin in (item.strip() for item in raw.split(","))
+        if origin and origin != "*"
+    ]
+
+
+CORS_ORIGINS = parse_cors_origins(os.getenv("TRAINING_MONITOR_CORS_ORIGINS", ""))
 
 
 class TrainingUpdate(BaseModel):
-    run_id: Optional[str] = None
+    run_id: Optional[str] = Field(default=None, max_length=MAX_RUN_ID_LENGTH)
     epoch: int = Field(ge=0)
     total_epochs: int = Field(ge=1)
     iou: Optional[float] = None
-    metric_name: str = "IoU"
+    metric_name: str = Field(default="IoU", max_length=MAX_METRIC_NAME_LENGTH)
     metrics: Dict[str, float] = Field(default_factory=dict)
     loss: Optional[float] = Field(default=None, ge=0.0)
     eta_seconds: Optional[int] = Field(default=None, ge=0)
@@ -61,27 +71,39 @@ def load_state() -> dict:
         return empty_state()
     try:
         loaded = json.loads(DATA_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (OSError, json.JSONDecodeError):
         return empty_state()
     return normalize_state(loaded)
 
 
+def safe_dict(value: object) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
+def safe_list(value: object) -> list:
+    return value if isinstance(value, list) else []
+
+
 def normalize_state(loaded: dict) -> dict:
     state = empty_state()
-    state.update(loaded)
-    state.setdefault("metrics", {})
-    state.setdefault("best_metrics", {})
-    state.setdefault("best_epochs", {})
-    state.setdefault("available_metrics", [])
+    if isinstance(loaded, dict):
+        state.update(loaded)
+    state["metrics"] = safe_dict(state.get("metrics"))
+    state["best_metrics"] = safe_dict(state.get("best_metrics"))
+    state["best_epochs"] = safe_dict(state.get("best_epochs"))
+    state["available_metrics"] = safe_list(state.get("available_metrics"))
+    state["history"] = safe_list(state.get("history"))[-500:]
     return state
 
 
 def save_state(state: dict) -> None:
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    DATA_FILE.write_text(
+    tmp_file = DATA_FILE.with_name(f"{DATA_FILE.name}.tmp")
+    tmp_file.write_text(
         json.dumps(state, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    tmp_file.replace(DATA_FILE)
     try:
         os.chmod(DATA_FILE, 0o600)
     except OSError:
@@ -111,12 +133,35 @@ def estimate_eta_seconds(state: dict, epoch: int, total_epochs: int) -> Optional
     return int(avg_epoch_seconds * remaining_epochs)
 
 
+def clean_metric_name(name: str) -> str:
+    cleaned = str(name).strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="metric name must not be empty")
+    if len(cleaned) > MAX_METRIC_NAME_LENGTH:
+        raise HTTPException(status_code=400, detail="metric name is too long")
+    return cleaned
+
+
+def finite_float(value: object, label: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise HTTPException(status_code=400, detail=f"{label} must be finite")
+    return parsed
+
+
 def build_metrics(update: TrainingUpdate) -> dict:
-    metrics = {name: float(value) for name, value in update.metrics.items()}
+    if len(update.metrics) > MAX_METRICS_PER_UPDATE:
+        raise HTTPException(status_code=400, detail="too many metrics in one update")
+
+    metrics = {
+        clean_metric_name(name): finite_float(value, clean_metric_name(name))
+        for name, value in update.metrics.items()
+    }
     if update.iou is not None:
-        metrics[update.metric_name or "IoU"] = float(update.iou)
+        name = clean_metric_name(update.metric_name or "IoU")
+        metrics[name] = finite_float(update.iou, name)
     if update.loss is not None:
-        metrics["loss"] = float(update.loss)
+        metrics["loss"] = finite_float(update.loss, "loss")
     if not metrics:
         raise HTTPException(status_code=400, detail="metrics or iou is required")
     return metrics
