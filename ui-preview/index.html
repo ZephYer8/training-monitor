@@ -1,1 +1,840 @@
-@ui-preview/index.html
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>训迹 UI 预览</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --ink: #101827;
+      --muted: #667085;
+      --line: #e5eaf2;
+      --blue: #2f6eea;
+      --blue-soft: #eaf2ff;
+      --green: #31a455;
+      --amber: #f5a524;
+      --dark: #111827;
+      --shadow: 0 12px 30px rgba(15, 23, 42, .08);
+      --radius: 18px;
+      font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 0%, rgba(47, 110, 234, .12), transparent 28%),
+        linear-gradient(180deg, #fbfcff 0%, var(--bg) 36%, #eef2f8 100%);
+    }
+
+    .stage {
+      display: grid;
+      grid-template-columns: minmax(340px, 430px) minmax(360px, 640px);
+      gap: 34px;
+      align-items: start;
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 22px 46px;
+    }
+
+    .brief {
+      position: sticky;
+      top: 26px;
+      padding: 8px 0;
+    }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .app-icon {
+      width: 62px;
+      height: 62px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #0f172a 0%, #2563eb 52%, #22c55e 100%);
+      box-shadow: 0 16px 32px rgba(37, 99, 235, .25);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .icon-card {
+      width: 41px;
+      height: 36px;
+      border-radius: 9px;
+      background: rgba(255, 255, 255, .94);
+      position: relative;
+    }
+
+    .icon-card::before {
+      content: "";
+      position: absolute;
+      left: 7px;
+      right: 7px;
+      top: 10px;
+      height: 16px;
+      border-left: 2px solid #cbd5e1;
+      border-bottom: 2px solid #cbd5e1;
+    }
+
+    .icon-card::after {
+      content: "";
+      position: absolute;
+      left: 9px;
+      top: 17px;
+      width: 26px;
+      height: 13px;
+      border-radius: 999px;
+      border-top: 4px solid #2563eb;
+      border-right: 4px solid #22c55e;
+      transform: rotate(-18deg);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 38px;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.8;
+      margin: 0 0 22px;
+    }
+
+    .design-card {
+      background: rgba(255, 255, 255, .78);
+      border: 1px solid rgba(229, 234, 242, .9);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+
+    .design-card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 14px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: #344054;
+      background: #fff;
+      font-size: 13px;
+    }
+
+    .phone {
+      width: min(100%, 430px);
+      min-height: 880px;
+      margin: 0 auto;
+      padding: 18px 16px 22px;
+      border-radius: 34px;
+      background: #f7f9fd;
+      border: 1px solid #d9e0ea;
+      box-shadow: 0 26px 70px rgba(15, 23, 42, .22);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .screen {
+      min-height: 832px;
+      padding-bottom: 92px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 8px 2px 18px;
+    }
+
+    .title {
+      font-size: 32px;
+      line-height: 1.1;
+      font-weight: 850;
+      letter-spacing: 0;
+    }
+
+    .sync {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .status-pill {
+      flex: 0 0 auto;
+      min-width: 76px;
+      color: var(--blue);
+      background: var(--blue-soft);
+      border: 1px solid #d5e3ff;
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-weight: 800;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 18px;
+      margin-bottom: 14px;
+    }
+
+    .progress-card {
+      padding: 20px;
+    }
+
+    .progress-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .progress-head .epoch {
+      font-size: 42px;
+      line-height: 1;
+      font-weight: 900;
+      color: #0b1220;
+    }
+
+    .label {
+      color: var(--muted);
+      font-weight: 760;
+      margin-bottom: 10px;
+    }
+
+    .percent {
+      color: var(--blue);
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .console-panel {
+      margin-top: 18px;
+      border-radius: 16px;
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      display: grid;
+      grid-template-columns: 132px 1fr;
+      gap: 16px;
+      align-items: center;
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .gauge {
+      width: 126px;
+      height: 126px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle, #1e293b 0 42%, transparent 43%),
+        conic-gradient(from 135deg, var(--blue) 0 58%, #334155 58% 100%);
+      box-shadow: inset 0 0 0 10px #111827, 0 18px 32px rgba(0, 0, 0, .22);
+      position: relative;
+      display: grid;
+      place-items: center;
+    }
+
+    .gauge::before {
+      content: "";
+      position: absolute;
+      inset: 13px;
+      border-radius: 50%;
+      border: 1px dashed rgba(148, 163, 184, .55);
+    }
+
+    .gauge strong {
+      color: #fff;
+      font-size: 26px;
+      line-height: 1;
+    }
+
+    .console-copy strong {
+      color: #fff;
+      display: block;
+      font-size: 18px;
+      margin-bottom: 12px;
+    }
+
+    .console-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      color: #94a3b8;
+      font-size: 13px;
+      margin: 8px 0;
+    }
+
+    .console-line b {
+      color: #fff;
+    }
+
+    .readout-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .readout {
+      background: #f8fafc;
+      border: 1px solid #e5eaf2;
+      border-radius: 14px;
+      padding: 12px 10px;
+    }
+
+    .readout span {
+      display: block;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .readout strong {
+      display: block;
+      margin-top: 7px;
+      font-size: 18px;
+      color: #0f172a;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 9px 22px rgba(15, 23, 42, .06);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 28px;
+      margin: 12px 0;
+    }
+
+    .metric small {
+      color: var(--muted);
+      font-weight: 750;
+    }
+
+    .chart-card h3 {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 0 0 10px;
+      font-size: 20px;
+    }
+
+    .chart-card h3 span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    svg.chart {
+      width: 100%;
+      height: 270px;
+      display: block;
+    }
+
+    .axis { stroke: #d4dbe7; stroke-width: 1.3; }
+    .grid { stroke: #e6eaf1; stroke-width: 1; }
+    .series { fill: none; stroke: var(--blue); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    .loss { stroke: var(--green); }
+    .dot { fill: var(--blue); }
+    .axis-label { fill: #667085; font-size: 11px; font-weight: 700; }
+
+    .tabs {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding: 8px;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, .9);
+      border: 1px solid var(--line);
+      box-shadow: 0 12px 32px rgba(15, 23, 42, .12);
+      backdrop-filter: blur(16px);
+    }
+
+    .tab {
+      border: 0;
+      background: transparent;
+      border-radius: 18px;
+      color: #344054;
+      padding: 12px 8px;
+      font-size: 16px;
+      font-weight: 850;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: var(--blue-soft);
+      color: var(--blue);
+      outline: 2px solid rgba(47, 110, 234, .26);
+    }
+
+    .metric-picker {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+
+    .pill-button {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 12px 8px;
+      color: #344054;
+      font-weight: 850;
+    }
+
+    .pill-button.on {
+      border-color: var(--blue);
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .settings-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .settings-row b,
+    .settings-row span {
+      overflow-wrap: anywhere;
+    }
+
+    .settings-row:last-child { border-bottom: 0; }
+    .settings-row span { color: var(--muted); font-size: 13px; display: block; margin-top: 4px; }
+
+    .toggle {
+      width: 48px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--blue);
+      position: relative;
+      flex: 0 0 auto;
+    }
+
+    .toggle::after {
+      content: "";
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      position: absolute;
+      top: 3px;
+      right: 3px;
+    }
+
+    .state-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .state-buttons button {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 10px 13px;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .state-buttons button.active {
+      color: var(--blue);
+      border-color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .finished .gauge {
+      background:
+        radial-gradient(circle, #173526 0 42%, transparent 43%),
+        conic-gradient(from 135deg, var(--green) 0 100%, #334155 100%);
+    }
+    .finished .status-pill { color: #047857; background: #dcfce7; border-color: #bbf7d0; }
+    .error .gauge {
+      background:
+        radial-gradient(circle, #3b1420 0 42%, transparent 43%),
+        conic-gradient(from 135deg, #e11d48 0 28%, #334155 28% 100%);
+    }
+    .error .status-pill { color: #be123c; background: #ffe4e6; border-color: #fecdd3; }
+
+    .glass-mode {
+      background:
+        radial-gradient(circle at 10% 4%, rgba(255, 255, 255, .90), transparent 30%),
+        radial-gradient(circle at 86% 12%, rgba(37, 99, 235, .24), transparent 34%),
+        radial-gradient(circle at 32% 34%, rgba(6, 182, 212, .16), transparent 29%),
+        radial-gradient(circle at 14% 76%, rgba(167, 139, 250, .22), transparent 34%),
+        radial-gradient(circle at 90% 86%, rgba(34, 197, 94, .18), transparent 32%),
+        linear-gradient(145deg, #fcfdff 0%, #edf4ff 38%, #f8f4ff 72%, #eff9f5 100%);
+      background-attachment: fixed;
+    }
+
+    .glass-mode .phone {
+      background:
+        radial-gradient(circle at 18% 2%, rgba(255, 255, 255, .60), transparent 28%),
+        radial-gradient(circle at 84% 22%, rgba(47, 110, 234, .14), transparent 32%),
+        rgba(247, 250, 255, .66);
+      border-color: rgba(255, 255, 255, .74);
+      box-shadow:
+        0 30px 90px rgba(15, 23, 42, .20),
+        inset 0 1px 0 rgba(255, 255, 255, .72);
+      backdrop-filter: blur(32px) saturate(1.72);
+    }
+
+    .glass-mode .card,
+    .glass-mode .metric,
+    .glass-mode .design-card {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, .52);
+      border-color: rgba(255, 255, 255, .82);
+      box-shadow:
+        0 24px 64px rgba(31, 41, 80, .13),
+        inset 0 1px 0 rgba(255, 255, 255, .82),
+        inset 0 -1px 0 rgba(147, 197, 253, .14);
+      backdrop-filter: blur(32px) saturate(1.8);
+    }
+
+    .glass-mode .card::before,
+    .glass-mode .metric::before,
+    .glass-mode .design-card::before {
+      content: "";
+      pointer-events: none;
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background:
+        linear-gradient(145deg, rgba(255,255,255,.48), rgba(255,255,255,.06) 42%, transparent 68%),
+        radial-gradient(circle at 20% 0%, rgba(255,255,255,.64), transparent 30%);
+    }
+
+    .glass-mode .console-panel {
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 12% 0%, rgba(255,255,255,.12), transparent 26%),
+        rgba(15, 23, 42, .68);
+      border-color: rgba(255, 255, 255, .22);
+      box-shadow:
+        0 20px 46px rgba(15, 23, 42, .22),
+        inset 0 1px 0 rgba(255, 255, 255, .15);
+      backdrop-filter: blur(28px) saturate(1.5);
+    }
+
+    .glass-mode .readout {
+      background: rgba(248, 250, 252, .58);
+      border-color: rgba(255, 255, 255, .68);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62);
+      backdrop-filter: blur(22px) saturate(1.42);
+    }
+
+    .glass-mode .pill-button,
+    .glass-mode .tab,
+    .glass-mode .settings-row,
+    .glass-mode .status-pill {
+      background: rgba(255, 255, 255, .42);
+      border-color: rgba(255, 255, 255, .70);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62);
+      backdrop-filter: blur(24px) saturate(1.45);
+    }
+
+    @media (max-width: 900px) {
+      .stage { grid-template-columns: 1fr; }
+      .brief { position: static; }
+    }
+
+    @media (max-width: 460px) {
+      .stage { padding: 0; }
+      .phone { border-radius: 0; width: 100%; min-height: 100vh; }
+      .console-panel { grid-template-columns: 108px 1fr; }
+      .gauge { width: 104px; height: 104px; }
+      .readout strong { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="stage">
+    <aside class="brief">
+      <div class="brand-row">
+        <div class="app-icon"><div class="icon-card"></div></div>
+        <div>
+          <h1>训迹</h1>
+          <p class="subtitle">AI 训练监控 App · 面向 OpenMMLab、YOLO 和自定义 PyTorch 训练。</p>
+        </div>
+      </div>
+      <section class="design-card">
+        <h2>这版 UI 的设计方向</h2>
+        <p class="subtitle">首页一眼看进度、Best 指标和当前指标；曲线页只展示你在设置中勾选的指标；设置页集中处理服务器地址、Token、通知和指标选择。</p>
+        <div class="chips">
+          <span class="chip">整洁卡片</span>
+          <span class="chip">中文主界面</span>
+          <span class="chip">英文指标</span>
+          <span class="chip">控制台仪表盘</span>
+          <span class="chip">锁屏通知思路</span>
+          <span class="chip">最小权限</span>
+        </div>
+        <div class="state-buttons">
+          <button class="active" data-state="training">训练中</button>
+          <button data-state="finished">已完成</button>
+          <button data-state="error">异常</button>
+        </div>
+        <div class="state-buttons theme-buttons">
+          <button class="active" data-theme="normal">普通界面</button>
+          <button data-theme="glass">毛玻璃</button>
+        </div>
+      </section>
+    </aside>
+
+    <section class="phone training" id="phone">
+      <div class="screen">
+        <section class="page active" id="overview">
+          <div class="topbar">
+            <div>
+              <div class="title">训迹</div>
+              <div class="sync">实时同步中 · 上次更新 20:58</div>
+            </div>
+            <div class="status-pill" id="statusText">训练中</div>
+          </div>
+
+          <div class="card progress-card">
+            <div class="progress-head">
+              <div>
+                <div class="label">训练进度</div>
+                <div class="epoch">174 / 300</div>
+              </div>
+              <div class="percent">58%</div>
+            </div>
+            <div class="console-panel">
+              <div class="gauge"><strong id="gaugeValue">58%</strong></div>
+              <div class="console-copy">
+                <strong id="consoleTitle">训练任务运行中</strong>
+                <div class="console-line"><span>Epoch</span><b>174 / 300</b></div>
+                <div class="console-line"><span>ETA</span><b id="etaValue">33分18秒</b></div>
+                <div class="console-line"><span>Mode</span><b id="modeValue">训练中</b></div>
+              </div>
+            </div>
+
+            <div class="readout-row">
+              <div class="readout"><span>Best mIoU</span><strong>78.89</strong></div>
+              <div class="readout"><span>Current</span><strong>78.43</strong></div>
+              <div class="readout"><span>Progress</span><strong>58%</strong></div>
+            </div>
+          </div>
+
+          <div class="metric-grid">
+            <div class="metric"><small>mIoU</small><strong>78.43</strong><small>Best 78.89 @ epoch 89</small></div>
+            <div class="metric"><small>Loss</small><strong>0.0948</strong><small>Best 0.0948 @ epoch 174</small></div>
+          </div>
+
+          <div class="card chart-card">
+            <h3>实时曲线 <span>181 条记录</span></h3>
+            <svg class="chart" viewBox="0 0 330 270" aria-label="mIoU trend chart">
+              <line class="axis" x1="46" y1="230" x2="308" y2="230" />
+              <line class="axis" x1="46" y1="36" x2="46" y2="230" />
+              <line class="grid" x1="46" y1="60" x2="308" y2="60" />
+              <line class="grid" x1="46" y1="122" x2="308" y2="122" />
+              <line class="grid" x1="46" y1="184" x2="308" y2="184" />
+              <text class="axis-label" x="8" y="64">79.8</text>
+              <text class="axis-label" x="8" y="126">75.3</text>
+              <text class="axis-label" x="8" y="188">70.8</text>
+              <text class="axis-label" x="34" y="252">1</text>
+              <text class="axis-label" x="160" y="252">87</text>
+              <text class="axis-label" x="286" y="252">174</text>
+              <path class="series" d="M46 212 L54 160 L61 126 L70 76 L82 86 L93 71 L104 79 L118 67 L130 74 L143 63 L155 70 L168 62 L181 66 L195 59 L208 63 L222 60 L236 62 L250 58 L264 61 L278 56 L294 57 L308 54" />
+              <circle class="dot" cx="308" cy="54" r="4" />
+            </svg>
+          </div>
+        </section>
+
+        <section class="page" id="charts">
+          <div class="topbar">
+            <div>
+              <div class="title">曲线分析</div>
+              <div class="sync">只显示设置中勾选且服务器检测到的指标</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="label">指标选择</div>
+            <div class="metric-picker">
+              <button class="pill-button on">mIoU</button>
+              <button class="pill-button on">Loss</button>
+              <button class="pill-button">BBox mAP</button>
+              <button class="pill-button">Top1 Acc</button>
+            </div>
+          </div>
+          <div class="card chart-card">
+            <h3>mIoU Trend <span>单独坐标轴</span></h3>
+            <svg class="chart" viewBox="0 0 330 270">
+              <line class="axis" x1="46" y1="230" x2="308" y2="230" />
+              <line class="axis" x1="46" y1="36" x2="46" y2="230" />
+              <line class="grid" x1="46" y1="60" x2="308" y2="60" />
+              <line class="grid" x1="46" y1="122" x2="308" y2="122" />
+              <line class="grid" x1="46" y1="184" x2="308" y2="184" />
+              <text class="axis-label" x="8" y="64">79.8</text>
+              <text class="axis-label" x="8" y="126">75.3</text>
+              <text class="axis-label" x="8" y="188">70.8</text>
+              <text class="axis-label" x="34" y="252">1</text>
+              <text class="axis-label" x="160" y="252">87</text>
+              <text class="axis-label" x="286" y="252">174</text>
+              <path class="series" d="M46 212 L54 160 L61 126 L70 76 L82 86 L93 71 L104 79 L118 67 L130 74 L143 63 L155 70 L168 62 L181 66 L195 59 L208 63 L222 60 L236 62 L250 58 L264 61 L278 56 L294 57 L308 54" />
+            </svg>
+          </div>
+          <div class="card chart-card">
+            <h3>Loss Trend <span>单独坐标轴</span></h3>
+            <svg class="chart" viewBox="0 0 330 270">
+              <line class="axis" x1="46" y1="230" x2="308" y2="230" />
+              <line class="axis" x1="46" y1="36" x2="46" y2="230" />
+              <line class="grid" x1="46" y1="60" x2="308" y2="60" />
+              <line class="grid" x1="46" y1="122" x2="308" y2="122" />
+              <line class="grid" x1="46" y1="184" x2="308" y2="184" />
+              <text class="axis-label" x="8" y="64">0.116</text>
+              <text class="axis-label" x="8" y="126">0.108</text>
+              <text class="axis-label" x="8" y="188">0.101</text>
+              <text class="axis-label" x="34" y="252">99</text>
+              <text class="axis-label" x="160" y="252">136</text>
+              <text class="axis-label" x="286" y="252">174</text>
+              <path class="series loss" d="M46 58 L58 92 L71 70 L84 103 L96 90 L109 111 L122 97 L135 129 L148 118 L161 148 L174 136 L187 163 L200 142 L213 174 L226 158 L239 185 L252 171 L265 196 L278 187 L292 202 L308 210" />
+            </svg>
+          </div>
+        </section>
+
+        <section class="page" id="settings">
+          <div class="topbar">
+            <div>
+              <div class="title">设置</div>
+              <div class="sync">服务器连接、指标、通知和安全</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="settings-row"><div><b>后端地址</b><span>https://server.example.com:6006</span></div></div>
+            <div class="settings-row"><div><b>访问 Token</b><span>已加密保存，输入时默认隐藏</span></div></div>
+            <div class="settings-row"><div><b>界面风格</b><span>普通 / 毛玻璃，可在设置中切换</span></div></div>
+            <div class="settings-row"><div><b>通知栏训练状态</b><span>显示 Epoch、Best mIoU、ETA</span></div><div class="toggle"></div></div>
+            <div class="settings-row"><div><b>刷新间隔</b><span>2 秒</span></div></div>
+          </div>
+          <div class="card">
+            <div class="label">显示指标</div>
+            <div class="metric-picker">
+              <button class="pill-button on">mIoU</button>
+              <button class="pill-button on">Loss</button>
+              <button class="pill-button">BBox mAP</button>
+              <button class="pill-button">Top1 Acc</button>
+              <button class="pill-button">PCK</button>
+              <button class="pill-button">Hmean</button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="settings-row"><div><b>关于我们</b><span>训迹 v0.7.28 · 作者 Zephyer · 项目主页与反馈渠道</span></div></div>
+            <div class="settings-row"><div><b>隐私说明</b><span>不采集通讯录、定位、相册；只连接用户配置的训练后端。</span></div></div>
+          </div>
+        </section>
+      </div>
+
+      <nav class="tabs">
+        <button class="tab active" data-page="overview">总览</button>
+        <button class="tab" data-page="charts">曲线</button>
+        <button class="tab" data-page="settings">设置</button>
+      </nav>
+    </section>
+  </main>
+
+  <script>
+    const phone = document.getElementById("phone");
+    const statusText = document.getElementById("statusText");
+    const consoleTitle = document.getElementById("consoleTitle");
+    const gaugeValue = document.getElementById("gaugeValue");
+    const etaValue = document.getElementById("etaValue");
+    const modeValue = document.getElementById("modeValue");
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((item) => item.classList.remove("active"));
+        document.querySelectorAll(".page").forEach((page) => page.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.page).classList.add("active");
+      });
+    });
+
+    document.querySelectorAll(".state-buttons button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".state-buttons button").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        phone.classList.remove("training", "finished", "error");
+        phone.classList.add(button.dataset.state);
+        if (button.dataset.state === "finished") {
+          statusText.textContent = "已完成";
+          consoleTitle.textContent = "训练完成，结果已保存";
+          gaugeValue.textContent = "100%";
+          etaValue.textContent = "已完成";
+          modeValue.textContent = "已完成";
+        } else if (button.dataset.state === "error") {
+          statusText.textContent = "异常";
+          consoleTitle.textContent = "连接异常，保留缓存";
+          gaugeValue.textContent = "--";
+          etaValue.textContent = "等待恢复";
+          modeValue.textContent = "异常";
+        } else {
+          statusText.textContent = "训练中";
+          consoleTitle.textContent = "训练任务运行中";
+          gaugeValue.textContent = "58%";
+          etaValue.textContent = "33分18秒";
+          modeValue.textContent = "训练中";
+        }
+      });
+    });
+
+    document.querySelectorAll(".theme-buttons button").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.querySelectorAll(".theme-buttons button").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        document.body.classList.toggle("glass-mode", button.dataset.theme === "glass");
+      });
+    });
+  </script>
+</body>
+</html>

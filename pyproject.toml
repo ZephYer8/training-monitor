@@ -1,1 +1,32 @@
-@pyproject.toml
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xunji-training-monitor"
+version = "0.7.28"
+description = "A lightweight training monitor server for deep learning experiments."
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    { name = "Zephyer" }
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30,<0.34",
+    "requests>=2.32",
+]
+
+[project.scripts]
+training-monitor = "monitorctl_py:main"
+training-monitor-watch = "auto_watch:main"
+
+[tool.setuptools]
+package-dir = {"" = "server"}
+py-modules = [
+    "app",
+    "auto_watch",
+    "openmmlab_log",
+    "training_monitor",
+    "monitorctl_py",
+]
