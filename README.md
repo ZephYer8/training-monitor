@@ -25,7 +25,7 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 推荐先用 pip 安装服务器端。安装后会像 `tensorboard` 一样在当前 Python/Conda 环境里提供 `training-monitor` 命令。学校服务器或国内机房如果直连 GitHub 很慢，优先用镜像 wheel：
 
 ```bash
-python3 -m pip install --upgrade "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.29/xunji_training_monitor-0.7.29-py3-none-any.whl"
+python3 -m pip install --upgrade "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.30/xunji_training_monitor-0.7.30-py3-none-any.whl"
 training-monitor start
 training-monitor connection
 ```
@@ -33,7 +33,7 @@ training-monitor connection
 如果镜像不可用，可以换一个镜像前缀：
 
 ```bash
-python3 -m pip install --upgrade "https://gh.llkk.cc/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.29/xunji_training_monitor-0.7.29-py3-none-any.whl"
+python3 -m pip install --upgrade "https://gh.llkk.cc/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.30/xunji_training_monitor-0.7.30-py3-none-any.whl"
 ```
 
 如果你的服务器能直接访问 GitHub，也可以安装源码包：
