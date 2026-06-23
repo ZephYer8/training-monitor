@@ -371,6 +371,7 @@ def sync_root_from_runs(state: dict) -> None:
     root_runs = state["runs"]
     for key, value in selected.items():
         state[key] = value
+    state["history"] = safe_list(state.get("history"))[-500:]
     state["runs"] = root_runs
     state["active_run_id"] = selected.get("run_id")
     state["available_gpus"] = available_gpus(root_runs)
