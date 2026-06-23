@@ -13,7 +13,7 @@ def write(path: Path, text: str) -> Path:
 
 
 @contextmanager
-def test_dir(name: str):
+def temp_test_dir(name: str):
     root = Path(__file__).resolve().parent / ".test-tmp" / name
     if root.exists():
         shutil.rmtree(root, ignore_errors=True)
@@ -25,7 +25,7 @@ def test_dir(name: str):
 
 
 def test_mmdetection_text_log() -> None:
-    with test_dir("mmdetection") as tmp:
+    with temp_test_dir("mmdetection") as tmp:
         log_path = write(
             tmp / "20260602.log",
             """
@@ -46,7 +46,7 @@ def test_mmdetection_text_log() -> None:
 
 
 def test_mmengine_json_log() -> None:
-    with test_dir("mmengine-json") as tmp:
+    with temp_test_dir("mmengine-json") as tmp:
         json_path = write(
             tmp / "20260602.json",
             """
@@ -66,7 +66,7 @@ def test_mmengine_json_log() -> None:
 
 
 def test_mmengine_scalars_json_without_total_stays_training() -> None:
-    with test_dir("mmengine-scalars") as tmp:
+    with temp_test_dir("mmengine-scalars") as tmp:
         json_path = write(
             tmp / "vis_data" / "scalars.json",
             """
@@ -84,7 +84,7 @@ def test_mmengine_scalars_json_without_total_stays_training() -> None:
 
 
 def test_iter_total_is_read_from_text_log() -> None:
-    with test_dir("iter-total") as tmp:
+    with temp_test_dir("iter-total") as tmp:
         log_path = write(
             tmp / "iter.log",
             """
@@ -99,7 +99,7 @@ def test_iter_total_is_read_from_text_log() -> None:
 
 
 def test_mmpose_metrics_and_minimize() -> None:
-    with test_dir("mmpose") as tmp:
+    with temp_test_dir("mmpose") as tmp:
         log_path = write(
             tmp / "pose.log",
             """
@@ -116,7 +116,7 @@ def test_mmpose_metrics_and_minimize() -> None:
 
 
 def test_mmagic_mmocr_mmtracking_metrics() -> None:
-    with test_dir("mixed") as tmp:
+    with temp_test_dir("mixed") as tmp:
         log_path = write(
             tmp / "mixed.log",
             """
@@ -136,7 +136,7 @@ def test_mmagic_mmocr_mmtracking_metrics() -> None:
 
 
 def test_mmyolo_mmdet3d_reid_panoptic_metrics() -> None:
-    with test_dir("openmmlab-extra") as tmp:
+    with temp_test_dir("openmmlab-extra") as tmp:
         json_path = write(
             tmp / "extra.jsonl",
             """
@@ -158,7 +158,7 @@ def test_mmyolo_mmdet3d_reid_panoptic_metrics() -> None:
 
 
 def test_prefixed_3d_metrics_and_detection_suffixes() -> None:
-    with test_dir("prefixed-3d") as tmp:
+    with temp_test_dir("prefixed-3d") as tmp:
         log_path = write(
             tmp / "prefixed.log",
             """
@@ -176,7 +176,7 @@ def test_prefixed_3d_metrics_and_detection_suffixes() -> None:
 
 
 def test_mmpretrain_mmaction_mmhuman3d_metrics() -> None:
-    with test_dir("classification-action-human") as tmp:
+    with temp_test_dir("classification-action-human") as tmp:
         json_path = write(
             tmp / "mixed.jsonl",
             """
@@ -200,7 +200,7 @@ def test_mmpretrain_mmaction_mmhuman3d_metrics() -> None:
 
 
 def test_auto_watch_skips_unparseable_latest_file() -> None:
-    with test_dir("auto-watch") as root:
+    with temp_test_dir("auto-watch") as root:
         write(root / "train.log", "Epoch(val) [4][5/5] mIoU: 0.79")
         junk = write(root / "latest.json", '{"config": "not metrics"}')
         junk.touch()

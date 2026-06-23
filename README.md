@@ -22,29 +22,29 @@ Training Monitor 是一个轻量级深度学习训练监控工具。它由两部
 
 ## 1. 快速开始
 
-推荐先用 pip 安装服务器端。学校服务器或国内机房如果直连 GitHub 很慢，优先用镜像 wheel：
+推荐先用 pip 安装服务器端。安装后会像 `tensorboard` 一样在当前 Python/Conda 环境里提供 `training-monitor` 命令。学校服务器或国内机房如果直连 GitHub 很慢，优先用镜像 wheel：
 
 ```bash
-python3 -m pip install --user --upgrade "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.29/xunji_training_monitor-0.7.29-py3-none-any.whl"
-python3 -m monitorctl_py start
-python3 -m monitorctl_py connection
+python3 -m pip install --upgrade "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.29/xunji_training_monitor-0.7.29-py3-none-any.whl"
+training-monitor start
+training-monitor connection
 ```
 
 如果镜像不可用，可以换一个镜像前缀：
 
 ```bash
-python3 -m pip install --user --upgrade "https://gh.llkk.cc/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.29/xunji_training_monitor-0.7.29-py3-none-any.whl"
+python3 -m pip install --upgrade "https://gh.llkk.cc/https://github.com/ZephYer8/training-monitor/releases/download/v0.7.29/xunji_training_monitor-0.7.29-py3-none-any.whl"
 ```
 
 如果你的服务器能直接访问 GitHub，也可以安装源码包：
 
 ```bash
-python3 -m pip install --user --upgrade https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-server.tar.gz
+python3 -m pip install --upgrade https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-server.tar.gz
 ```
 
 注意：`pip -i 清华源` 只加速 PyPI 依赖，不会加速 `https://github.com/...` 这种文件下载。
 
-如果你的服务器已经把 `~/.local/bin` 或 `~/bin` 加入 `PATH`，可以直接运行：
+安装成功后直接运行：
 
 ```bash
 training-monitor start
@@ -58,7 +58,7 @@ python3 -m monitorctl_py fix-path
 export PATH="$HOME/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:$PATH"
 ```
 
-如果服务器没有配置 pip，或者你想直接一键安装，在训练服务器上执行：
+如果服务器没有配置 pip，或者你想直接一键安装，在训练服务器上执行。安装脚本会优先把包安装到当前 Python 环境；如果当前环境不能安装，才会自动回退到独立运行目录：
 
 ```bash
 curl -fL https://github.com/ZephYer8/training-monitor/releases/latest/download/training-monitor-install-server.sh | bash
@@ -74,16 +74,16 @@ curl -fL "https://gh-proxy.com/https://github.com/ZephYer8/training-monitor/rele
 安装完成后查看连接信息：
 
 ```bash
-python3 -m monitorctl_py connection
+training-monitor connection
 ```
 
 如果需要诊断安装状态：
 
 ```bash
-python3 -m monitorctl_py doctor
+training-monitor doctor
 ```
 
-root 用户使用一键脚本时，默认会同时创建：
+如果脚本回退到独立运行目录，root 用户默认会同时创建：
 
 ```text
 /usr/local/bin/training-monitor
@@ -127,9 +127,18 @@ training-monitor rotate-token
 - `curl` 或 `wget`
 - 手机能访问到服务器开放出来的后端地址
 
-推荐使用 pip 安装。安装脚本会优先创建独立虚拟环境；如果服务器缺少 `python3-venv`，会自动改用本地 Python 包目录，尽量避免卡在 `ensurepip is not available`。
+推荐使用 pip 安装到当前 Python/Conda 环境。安装后命令入口和 `tensorboard` 类似，直接运行 `training-monitor start`、`training-monitor connection` 即可。
 
-### 2.2 默认安装位置
+一键安装脚本也会优先执行环境安装；如果服务器的 Python 环境被系统限制、不能写入 site-packages，脚本才会自动创建独立运行目录作为兜底。你也可以显式指定：
+
+```bash
+TRAINING_MONITOR_INSTALL_MODE=env bash training-monitor-install-server.sh   # 只允许安装到当前环境
+TRAINING_MONITOR_INSTALL_MODE=venv bash training-monitor-install-server.sh  # 强制使用独立运行目录
+```
+
+### 2.2 状态和日志位置
+
+Python 包会安装到当前环境；训练状态、token、日志和配置文件仍会放到一个独立目录，方便升级包时保留数据。
 
 如果你是 `root` 用户，并且服务器存在 `/root/autodl-tmp`，默认安装到：
 
@@ -520,6 +529,7 @@ monitor = TrainingMonitor(
 
 monitor.log(
     run_id="my-experiment-001",
+    gpu_id="0",
     epoch=1,
     total_epochs=300,
     iou=76.5,
@@ -530,6 +540,7 @@ monitor.log(
 这里的参数含义：
 
 - `run_id`：训练任务 ID。新任务建议换一个新的 ID。
+- `gpu_id` / `gpu_ids`：可选。单卡训练传 `gpu_id="0"`；一个模型使用多卡训练传 `gpu_ids=["0", "1"]`。如果不传，helper 会尝试读取训练进程的 `CUDA_VISIBLE_DEVICES`。
 - `epoch`：当前轮数。
 - `total_epochs`：总轮数。
 - `iou`：指标值。字段名为了兼容旧版本仍叫 `iou`，实际可以传 `mIoU`、`mAP`、`accuracy` 等指标。
@@ -541,9 +552,14 @@ monitor.log(
 
 会。
 
-后端会根据 `run_id` 判断是不是新的训练任务。自动检测模式下，`run_id` 默认就是日志文件路径。
+后端会根据 `run_id` 判断是不是新的训练任务，并会同时保留多个正在训练的任务。自动检测模式下，`run_id` 默认就是日志文件路径。
 
-当检测到新的日志文件或新的 `results.csv` 后，会自动切换到新的训练任务，并重新统计最好指标。
+多显卡场景下：
+
+- 多个模型分别跑在不同显卡：每个训练任务使用不同 `run_id`，并上报对应 `gpu_id`。安卓端会出现 GPU 视图选择，可以切换查看对应任务。
+- 一个模型使用多张显卡训练：保持同一个 `run_id`，上报 `gpu_ids=["0", "1"]` 这类列表。安卓端会把它当作一个训练任务展示，不需要额外选择显卡。
+
+当检测到新的日志文件或新的 `results.csv` 后，会自动加入训练任务列表，并重新统计对应任务的最好指标。
 
 如果自动检测选错了日志，通常是因为旧日志文件被重新写入，导致修改时间变成最新。解决办法是手动指定：
 

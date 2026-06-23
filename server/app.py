@@ -16,6 +16,9 @@ MONITOR_TOKEN = os.getenv("MONITOR_TOKEN", "")
 MAX_METRICS_PER_UPDATE = 64
 MAX_METRIC_NAME_LENGTH = 64
 MAX_RUN_ID_LENGTH = 128
+MAX_GPU_ID_LENGTH = 32
+MAX_GPU_IDS_PER_UPDATE = 16
+MAX_RUNS = 32
 
 
 def parse_cors_origins(raw: str) -> list[str]:
@@ -31,6 +34,8 @@ CORS_ORIGINS = parse_cors_origins(os.getenv("TRAINING_MONITOR_CORS_ORIGINS", "")
 
 class TrainingUpdate(BaseModel):
     run_id: Optional[str] = Field(default=None, max_length=MAX_RUN_ID_LENGTH)
+    gpu_id: Optional[str] = Field(default=None, max_length=MAX_GPU_ID_LENGTH)
+    gpu_ids: list[str] = Field(default_factory=list, max_length=MAX_GPU_IDS_PER_UPDATE)
     epoch: int = Field(ge=0)
     total_epochs: int = Field(ge=1)
     iou: Optional[float] = None
@@ -42,13 +47,15 @@ class TrainingUpdate(BaseModel):
 
 
 def now_text() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.now().isoformat(timespec="microseconds")
 
 
-def empty_state() -> dict:
+def empty_run_state(run_id: Optional[str] = None) -> dict:
     return {
         "status": "idle",
-        "run_id": None,
+        "run_id": run_id,
+        "gpu_id": None,
+        "gpu_ids": [],
         "epoch": 0,
         "total_epochs": 0,
         "current_iou": None,
@@ -64,6 +71,14 @@ def empty_state() -> dict:
         "updated_at": None,
         "history": [],
     }
+
+
+def empty_state() -> dict:
+    state = empty_run_state()
+    state["runs"] = []
+    state["active_run_id"] = None
+    state["available_gpus"] = []
+    return state
 
 
 def load_state() -> dict:
@@ -84,15 +99,64 @@ def safe_list(value: object) -> list:
     return value if isinstance(value, list) else []
 
 
+def clean_gpu_id(value: object) -> Optional[str]:
+    cleaned = str(value).strip()
+    if not cleaned or cleaned.lower() in {"none", "null", "nodevfiles"}:
+        return None
+    if len(cleaned) > MAX_GPU_ID_LENGTH:
+        raise HTTPException(status_code=400, detail="gpu id is too long")
+    return cleaned
+
+
+def normalize_gpu_ids(*groups: object) -> list[str]:
+    gpu_ids: list[str] = []
+    for group in groups:
+        if group is None:
+            continue
+        values = group if isinstance(group, list) else [group]
+        for value in values:
+            gpu_id = clean_gpu_id(value)
+            if gpu_id and gpu_id not in gpu_ids:
+                gpu_ids.append(gpu_id)
+    return gpu_ids[:MAX_GPU_IDS_PER_UPDATE]
+
+
+def normalize_run(loaded: dict) -> dict:
+    run = empty_run_state(loaded.get("run_id"))
+    if isinstance(loaded, dict):
+        run.update(loaded)
+    run["metrics"] = safe_dict(run.get("metrics"))
+    run["best_metrics"] = safe_dict(run.get("best_metrics"))
+    run["best_epochs"] = safe_dict(run.get("best_epochs"))
+    run["available_metrics"] = safe_list(run.get("available_metrics"))
+    run["history"] = safe_list(run.get("history"))[-500:]
+    run["gpu_ids"] = normalize_gpu_ids(run.get("gpu_ids"), run.get("gpu_id"))
+    run["gpu_id"] = run["gpu_ids"][0] if run["gpu_ids"] else None
+    return run
+
+
+def legacy_run_from_state(loaded: dict) -> Optional[dict]:
+    if not isinstance(loaded, dict):
+        return None
+    if loaded.get("status") == "idle" and not loaded.get("history"):
+        return None
+    run = empty_run_state(loaded.get("run_id"))
+    for key in run:
+        if key in loaded:
+            run[key] = loaded[key]
+    return normalize_run(run)
+
+
 def normalize_state(loaded: dict) -> dict:
     state = empty_state()
     if isinstance(loaded, dict):
-        state.update(loaded)
-    state["metrics"] = safe_dict(state.get("metrics"))
-    state["best_metrics"] = safe_dict(state.get("best_metrics"))
-    state["best_epochs"] = safe_dict(state.get("best_epochs"))
-    state["available_metrics"] = safe_list(state.get("available_metrics"))
-    state["history"] = safe_list(state.get("history"))[-500:]
+        runs = [normalize_run(run) for run in safe_list(loaded.get("runs")) if isinstance(run, dict)]
+        if not runs:
+            legacy = legacy_run_from_state(loaded)
+            if legacy:
+                runs = [legacy]
+        state["runs"] = runs[-MAX_RUNS:]
+    sync_root_from_runs(state)
     return state
 
 
@@ -117,12 +181,21 @@ def require_token(x_monitor_token: str = Header(default="")) -> None:
         raise HTTPException(status_code=401, detail="invalid token")
 
 
-def estimate_eta_seconds(state: dict, epoch: int, total_epochs: int) -> Optional[int]:
-    history = state.get("history", [])
+def parse_time(value: object) -> datetime:
+    if not value:
+        return datetime.min
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return datetime.min
+
+
+def estimate_eta_seconds(run: dict, epoch: int, total_epochs: int) -> Optional[int]:
+    history = run.get("history", [])
     if epoch <= 0 or not history:
         return None
 
-    started_at = state.get("started_at")
+    started_at = run.get("started_at")
     if not started_at:
         return None
 
@@ -180,12 +253,127 @@ def better_metric(name: str, value: float, best_value: Optional[float]) -> bool:
     return value > best_value
 
 
-def update_available_metrics(state: dict, metrics: dict) -> None:
-    available = list(state.get("available_metrics") or [])
+def update_available_metrics(run: dict, metrics: dict) -> None:
+    available = list(run.get("available_metrics") or [])
     for name in metrics:
         if name not in available:
             available.append(name)
-    state["available_metrics"] = available
+    run["available_metrics"] = available
+
+
+def run_identity(update: TrainingUpdate, gpu_ids: list[str]) -> str:
+    if update.run_id:
+        return update.run_id
+    if gpu_ids:
+        return "gpu:" + ",".join(gpu_ids)
+    return "default"
+
+
+def find_or_create_run(state: dict, run_id: str) -> dict:
+    runs = state.setdefault("runs", [])
+    for run in runs:
+        if run.get("run_id") == run_id:
+            return run
+    run = empty_run_state(run_id)
+    runs.append(run)
+    return run
+
+
+def update_run(run: dict, update: TrainingUpdate, metrics: dict, primary_name: str, gpu_ids: list[str]) -> None:
+    run_changed = bool(update.run_id and update.run_id != run.get("run_id"))
+    epoch_restarted = bool(run.get("epoch") and update.epoch < run.get("epoch"))
+    should_reset = (
+        not run.get("started_at")
+        or run.get("status") in {"idle", "finished"}
+        or run_changed
+        or epoch_restarted
+    )
+
+    if should_reset:
+        run["started_at"] = now_text()
+        run["history"] = []
+        run["best_iou"] = None
+        run["best_metrics"] = {}
+        run["best_epochs"] = {}
+        run["available_metrics"] = []
+        run["best_epoch"] = None
+    run["run_id"] = run_identity(update, gpu_ids)
+    if gpu_ids:
+        run["gpu_ids"] = gpu_ids
+        run["gpu_id"] = gpu_ids[0]
+
+    best_metrics = run.setdefault("best_metrics", {})
+    best_epochs = run.setdefault("best_epochs", {})
+    for name, value in metrics.items():
+        if better_metric(name, value, best_metrics.get(name)):
+            best_metrics[name] = value
+            best_epochs[name] = update.epoch
+
+    primary_value = metrics[primary_name]
+    run["best_iou"] = best_metrics.get(primary_name)
+    run["best_epoch"] = best_epochs.get(primary_name)
+    update_available_metrics(run, metrics)
+
+    run["status"] = update.status
+    run["epoch"] = update.epoch
+    run["total_epochs"] = update.total_epochs
+    run["current_iou"] = primary_value
+    run["metric_name"] = primary_name
+    run["metrics"] = metrics
+    run["updated_at"] = now_text()
+    run["history"].append(
+        {
+            "epoch": update.epoch,
+            "iou": primary_value,
+            "metric_name": primary_name,
+            "metrics": metrics,
+            "updated_at": run["updated_at"],
+        }
+    )
+    run["history"] = run["history"][-500:]
+    run["eta_seconds"] = update.eta_seconds
+    if run["eta_seconds"] is None:
+        run["eta_seconds"] = estimate_eta_seconds(
+            run,
+            update.epoch,
+            update.total_epochs,
+        )
+
+
+def active_run(runs: list[dict]) -> Optional[dict]:
+    if not runs:
+        return None
+    training = [run for run in runs if run.get("status") == "training"]
+    candidates = training or runs
+    return max(candidates, key=lambda run: parse_time(run.get("updated_at")))
+
+
+def available_gpus(runs: list[dict]) -> list[str]:
+    result: list[str] = []
+    for run in runs:
+        for gpu_id in normalize_gpu_ids(run.get("gpu_ids"), run.get("gpu_id")):
+            if gpu_id not in result:
+                result.append(gpu_id)
+    return result
+
+
+def sync_root_from_runs(state: dict) -> None:
+    runs = [normalize_run(run) for run in safe_list(state.get("runs")) if isinstance(run, dict)]
+    runs.sort(key=lambda run: parse_time(run.get("updated_at")), reverse=True)
+    state["runs"] = runs[:MAX_RUNS]
+    selected = active_run(state["runs"])
+    if selected is None:
+        fresh = empty_state()
+        state.clear()
+        state.update(fresh)
+        return
+
+    root_runs = state["runs"]
+    for key, value in selected.items():
+        state[key] = value
+    state["runs"] = root_runs
+    state["active_run_id"] = selected.get("run_id")
+    state["available_gpus"] = available_gpus(root_runs)
 
 
 state = load_state()
@@ -214,64 +402,11 @@ def get_status() -> dict:
 def update_status(update: TrainingUpdate) -> dict:
     metrics = build_metrics(update)
     primary_name = update.metric_name if update.metric_name in metrics else next(iter(metrics))
-    primary_value = metrics[primary_name]
-    run_changed = bool(update.run_id and update.run_id != state.get("run_id"))
-    epoch_restarted = bool(state.get("epoch") and update.epoch < state.get("epoch"))
-    should_reset = (
-        not state.get("started_at")
-        or state.get("status") in {"idle", "finished"}
-        or run_changed
-        or epoch_restarted
-    )
-
-    if should_reset:
-        state["started_at"] = now_text()
-        state["history"] = []
-        state["best_iou"] = None
-        state["best_metrics"] = {}
-        state["best_epochs"] = {}
-        state["available_metrics"] = []
-        state["best_epoch"] = None
-        state["run_id"] = update.run_id
-    elif update.run_id:
-        state["run_id"] = update.run_id
-
-    best_metrics = state.setdefault("best_metrics", {})
-    best_epochs = state.setdefault("best_epochs", {})
-    for name, value in metrics.items():
-        if better_metric(name, value, best_metrics.get(name)):
-            best_metrics[name] = value
-            best_epochs[name] = update.epoch
-
-    state["best_iou"] = best_metrics.get(primary_name)
-    state["best_epoch"] = best_epochs.get(primary_name)
-    update_available_metrics(state, metrics)
-
-    state["status"] = update.status
-    state["epoch"] = update.epoch
-    state["total_epochs"] = update.total_epochs
-    state["current_iou"] = primary_value
-    state["metric_name"] = primary_name
-    state["metrics"] = metrics
-    state["updated_at"] = now_text()
-    state["history"].append(
-        {
-            "epoch": update.epoch,
-            "iou": primary_value,
-            "metric_name": primary_name,
-            "metrics": metrics,
-            "updated_at": state["updated_at"],
-        }
-    )
-    state["history"] = state["history"][-500:]
-    state["eta_seconds"] = update.eta_seconds
-    if state["eta_seconds"] is None:
-        state["eta_seconds"] = estimate_eta_seconds(
-            state,
-            update.epoch,
-            update.total_epochs,
-        )
-
+    gpu_ids = normalize_gpu_ids(update.gpu_ids, update.gpu_id)
+    run_id = run_identity(update, gpu_ids)
+    run = find_or_create_run(state, run_id)
+    update_run(run, update, metrics, primary_name, gpu_ids)
+    sync_root_from_runs(state)
     save_state(state)
     return state
 

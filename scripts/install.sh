@@ -60,6 +60,75 @@ PY
     die "Python 3.8+ is required"
 }
 
+python_scripts_dir() {
+    "$PYTHON_BIN" - <<'PY'
+import sysconfig
+print(sysconfig.get_path("scripts") or "")
+PY
+}
+
+ensure_python_pip() {
+    if "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+        return 0
+    fi
+    "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1 || return 1
+}
+
+installed_training_monitor_command() {
+    if command -v training-monitor >/dev/null 2>&1; then
+        command -v training-monitor
+        return 0
+    fi
+
+    local scripts_dir
+    scripts_dir="$(python_scripts_dir 2>/dev/null || true)"
+    if [ -n "$scripts_dir" ] && [ -x "$scripts_dir/training-monitor" ]; then
+        echo "$scripts_dir/training-monitor"
+        return 0
+    fi
+
+    return 1
+}
+
+try_environment_install() {
+    local install_mode="${TRAINING_MONITOR_INSTALL_MODE:-auto}"
+    [ "$install_mode" != "venv" ] || return 1
+
+    log "install Python package into current environment"
+    if ! ensure_python_pip; then
+        [ "$install_mode" = "env" ] && die "Python pip is unavailable in the selected environment."
+        log "pip is unavailable; falling back to isolated runtime"
+        return 1
+    fi
+
+    if ! "$PYTHON_BIN" -m pip install --upgrade "$ROOT_DIR"; then
+        [ "$install_mode" = "env" ] && die "pip install failed in the selected environment."
+        log "environment install failed; falling back to isolated runtime"
+        return 1
+    fi
+
+    "$PYTHON_BIN" -m monitorctl_py fix-path >/dev/null 2>&1 || true
+    log "initialize token"
+    "$PYTHON_BIN" -m monitorctl_py token-init
+    log "start monitor service"
+    "$PYTHON_BIN" -m monitorctl_py start
+
+    echo
+    echo "Training Monitor installed into Python environment"
+    echo "Python: $PYTHON_BIN"
+    if command_path="$(installed_training_monitor_command)"; then
+        echo "Command: $command_path"
+        echo "You can run: training-monitor status"
+    else
+        echo "Command module: $PYTHON_BIN -m monitorctl_py"
+        echo "If training-monitor is not found, reopen your shell or run:"
+        echo "  $PYTHON_BIN -m monitorctl_py fix-path"
+    fi
+    echo
+    "$PYTHON_BIN" -m monitorctl_py connection
+    exit 0
+}
+
 write_python_wrapper() {
     local real_python="$1"
     mkdir -p "$TRAINING_MONITOR_HOME/venv/bin" "$PYTHON_PACKAGES_DIR"
@@ -100,6 +169,9 @@ prepare_python_runtime() {
     write_python_wrapper "$PYTHON_BIN"
 }
 
+PYTHON_BIN="$(find_python)"
+try_environment_install
+
 log "install home: $TRAINING_MONITOR_HOME"
 mkdir -p "$TRAINING_MONITOR_HOME"
 chmod 700 "$TRAINING_MONITOR_HOME" 2>/dev/null || true
@@ -115,7 +187,6 @@ MONITORCTL="$TRAINING_MONITOR_HOME/scripts/monitorctl"
 [ -f "$MONITORCTL" ] || die "monitor control script is missing after copy: $MONITORCTL"
 sed -i 's/\r$//' "$MONITORCTL" "$TRAINING_MONITOR_HOME/scripts/install.sh" "$TRAINING_MONITOR_HOME/install.sh" 2>/dev/null || true
 
-PYTHON_BIN="$(find_python)"
 prepare_python_runtime
 
 log "install Python dependencies"

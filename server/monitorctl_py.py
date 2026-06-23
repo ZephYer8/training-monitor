@@ -10,6 +10,7 @@ import site
 import socket
 import subprocess
 import sys
+import sysconfig
 import time
 from typing import Dict, List, Optional
 
@@ -433,9 +434,62 @@ def shell_profiles() -> List[Path]:
 
 
 def path_has_user_bin() -> bool:
-    user_bin = str(user_bin_dir())
+    user_bin = os.path.normcase(str(user_bin_dir()))
+    scripts_dir = os.path.normcase(str(python_scripts_dir()))
     path_dirs = os.getenv("PATH", "").split(os.pathsep)
-    return user_bin in path_dirs or str(Path.home() / "bin") in path_dirs
+    if os.name == "nt":
+        path_dirs += windows_user_path().split(os.pathsep)
+    normalized = {os.path.normcase(path) for path in path_dirs}
+    return (
+        user_bin in normalized
+        or scripts_dir in normalized
+        or os.path.normcase(str(Path.home() / "bin")) in normalized
+    )
+
+
+def python_scripts_dir() -> Path:
+    configured = sysconfig.get_path("scripts")
+    if configured:
+        return Path(configured)
+    return user_bin_dir()
+
+
+def windows_user_path() -> str:
+    if os.name != "nt":
+        return ""
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, "Path")
+            return value
+    except OSError:
+        return ""
+
+
+def ensure_windows_path() -> List[Path]:
+    if os.name != "nt":
+        return []
+
+    scripts_dir = python_scripts_dir()
+    current_entries = os.environ.get("PATH", "").split(os.pathsep)
+    user_entries = windows_user_path().split(os.pathsep)
+    normalized = {os.path.normcase(entry) for entry in current_entries + user_entries if entry}
+    if os.path.normcase(str(scripts_dir)) in normalized:
+        return []
+
+    try:
+        import winreg
+
+        new_entries = [entry for entry in user_entries if entry]
+        new_entries.append(str(scripts_dir))
+        new_value = os.pathsep.join(new_entries)
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
+            winreg.SetValueEx(key, "Path", 0, winreg.REG_EXPAND_SZ, new_value)
+        os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + str(scripts_dir)
+        return [scripts_dir]
+    except OSError:
+        return []
 
 
 def launcher_paths() -> List[Path]:
@@ -498,6 +552,7 @@ def write_shell_profile_exports() -> List[Path]:
 
 def ensure_command_access() -> None:
     if os.name == "nt":
+        ensure_windows_path()
         return
     if os.getenv("TRAINING_MONITOR_SKIP_PATH_BOOTSTRAP") == "1":
         return
@@ -527,8 +582,15 @@ def fix_path(_: argparse.Namespace) -> None:
     user_bin.mkdir(parents=True, exist_ok=True)
 
     if os.name == "nt":
-        print(f"script directory: {user_bin}")
-        print("On Windows, add this directory to PATH manually if training-monitor is not found.")
+        changed = ensure_windows_path()
+        scripts_dir = python_scripts_dir()
+        print(f"script directory: {scripts_dir}")
+        if changed:
+            print("updated user PATH. Open a new terminal, then run: training-monitor status")
+        elif path_has_user_bin():
+            print("PATH is already configured.")
+        else:
+            print("Could not update PATH automatically. Add this directory to PATH manually.")
         return
 
     ensure_launcher_files()
@@ -557,6 +619,8 @@ def doctor(_: argparse.Namespace) -> None:
     print(f"python version: {sys.version.split()[0]}")
     print(f"install home: {BASE}")
     print(f"script directory: {user_bin}")
+    if os.name == "nt":
+        print(f"python scripts directory: {python_scripts_dir()}")
     print(f"fallback directory: {home_bin}")
     print(f"training-monitor command: {command_path or 'not found in PATH'}")
     print(f"script directory in PATH: {'yes' if path_has_user_bin() else 'no'}")
@@ -564,8 +628,12 @@ def doctor(_: argparse.Namespace) -> None:
     print()
     if not command_path:
         print("recommended fix:")
-        print("python3 -m monitorctl_py fix-path")
-        print('export PATH="$HOME/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:$PATH"')
+        if os.name == "nt":
+            print("py -m monitorctl_py fix-path")
+            print("then open a new terminal")
+        else:
+            print("python3 -m monitorctl_py fix-path")
+            print('export PATH="$HOME/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:$PATH"')
     print("module command always works after pip install:")
     print("python3 -m monitorctl_py connection")
 

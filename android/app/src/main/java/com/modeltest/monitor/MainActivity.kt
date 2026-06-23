@@ -130,6 +130,7 @@ private const val TrainingNotificationId = 4100
 private const val TrainingFinishedNotificationId = 4101
 private const val TrainingChannelId = "training_status_lock_screen_v2"
 private const val TrainingFinishedChannelId = "training_finished_v2"
+private const val AllGpuFilter = "all"
 
 
 class TrainingNotificationService : Service() {
@@ -279,7 +280,9 @@ data class HistoryPoint(
 
 
 data class TrainingStatus(
+    val runId: String? = null,
     val status: String = "idle",
+    val gpuIds: List<String> = emptyList(),
     val epoch: Int = 0,
     val totalEpochs: Int = 0,
     val metrics: Map<String, Double> = emptyMap(),
@@ -290,6 +293,7 @@ data class TrainingStatus(
     val updatedAt: String = "",
     val history: List<HistoryPoint> = emptyList(),
     val availableMetrics: List<String> = emptyList(),
+    val runs: List<TrainingStatus> = emptyList(),
 ) {
     val progress: Float
         get() = if (totalEpochs > 0) {
@@ -323,6 +327,21 @@ data class TrainingStatus(
             point.metrics[metric]?.let { return it }
         }
         return null
+    }
+
+    fun selectableGpuIds(): List<String> {
+        if (runs.size <= 1) return emptyList()
+        return runs.flatMap { it.gpuIds }.filter { it.isNotBlank() }.distinct().sortedWith(gpuIdComparator())
+    }
+
+    fun statusForGpu(gpuId: String): TrainingStatus {
+        if (gpuId == AllGpuFilter) return this
+        return runs.firstOrNull { gpuId in it.gpuIds } ?: this
+    }
+
+    fun runDisplayName(): String {
+        val name = runId?.substringAfterLast('/')?.substringAfterLast('\\')?.takeIf { it.isNotBlank() }
+        return name ?: gpuLabel(gpuIds).takeIf { it.isNotBlank() } ?: "当前任务"
     }
 }
 
@@ -447,6 +466,7 @@ private fun MonitorRoot() {
     var privacyAccepted by rememberSaveable { mutableStateOf(loadPrivacyAccepted(context)) }
     var uiStyle by rememberSaveable { mutableStateOf(loadUiStyle(context)) }
     var status by remember { mutableStateOf(loadCachedStatus(context) ?: TrainingStatus()) }
+    var selectedGpuId by rememberSaveable { mutableStateOf(AllGpuFilter) }
     var hasFreshStatus by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -528,9 +548,16 @@ private fun MonitorRoot() {
         syncTrainingNotificationService(context, status, notificationEnabled && privacyAccepted)
     }
 
+    val gpuOptions = status.selectableGpuIds()
+    LaunchedEffect(status.runs, status.gpuIds) {
+        if (selectedGpuId != AllGpuFilter && selectedGpuId !in gpuOptions) {
+            selectedGpuId = AllGpuFilter
+        }
+    }
+    val displayStatus = status.statusForGpu(selectedGpuId)
     val selectedMetrics = parseMetricList(selectedMetricsText)
-    val visibleMetrics = chooseVisibleMetrics(status, selectedMetrics)
-    val metricOptions = mergeMetricOptions(status.metricNames(), selectedMetrics)
+    val visibleMetrics = chooseVisibleMetrics(displayStatus, selectedMetrics)
+    val metricOptions = mergeMetricOptions(status.metricNames() + status.runs.flatMap { it.metricNames() }, selectedMetrics)
     val currentPage = AppPage.valueOf(page)
     val glassStyle = uiStyle == "glass"
 
@@ -546,28 +573,36 @@ private fun MonitorRoot() {
             Box(modifier = Modifier.weight(1f)) {
                 when (currentPage) {
                     AppPage.Dashboard -> DashboardScreen(
-                        status = status,
+                        status = displayStatus,
+                        rootStatus = status,
+                        selectedGpuId = selectedGpuId,
+                        gpuOptions = gpuOptions,
                         error = error,
                         isRefreshing = isRefreshing,
                         visibleMetrics = visibleMetrics,
                         glassStyle = glassStyle,
+                        onGpuSelected = { selectedGpuId = it },
                         onRefresh = { scope.launch { refreshOnce() } },
                         onMetricSwap = { first, second ->
-                            val next = swapMetricOrder(status, selectedMetrics, visibleMetrics, first, second)
+                            val next = swapMetricOrder(displayStatus, selectedMetrics, visibleMetrics, first, second)
                             selectedMetricsText = next
                             saveSelectedMetricsText(context, next)
                         },
                         onMetricMove = { metric, delta ->
-                            val next = moveMetricOrder(status, selectedMetrics, visibleMetrics, metric, delta)
+                            val next = moveMetricOrder(displayStatus, selectedMetrics, visibleMetrics, metric, delta)
                             selectedMetricsText = next
                             saveSelectedMetricsText(context, next)
                         },
                     )
 
                 AppPage.Charts -> ChartsScreen(
-                    status = status,
+                    status = displayStatus,
+                    rootStatus = status,
+                    selectedGpuId = selectedGpuId,
+                    gpuOptions = gpuOptions,
                     selectedMetrics = selectedMetrics,
                     glassStyle = glassStyle,
+                    onGpuSelected = { selectedGpuId = it },
                 )
 
                     AppPage.Settings -> SettingsScreen(
@@ -758,10 +793,14 @@ private fun AppBackdrop(glassStyle: Boolean) {
 @Composable
 private fun DashboardScreen(
     status: TrainingStatus,
+    rootStatus: TrainingStatus,
+    selectedGpuId: String,
+    gpuOptions: List<String>,
     error: String?,
     isRefreshing: Boolean,
     visibleMetrics: List<String>,
     glassStyle: Boolean,
+    onGpuSelected: (String) -> Unit,
     onRefresh: () -> Unit,
     onMetricSwap: (String, String) -> Unit,
     onMetricMove: (String, Int) -> Unit,
@@ -779,10 +818,107 @@ private fun DashboardScreen(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
         )
+        GpuSelectorCard(
+            rootStatus = rootStatus,
+            selectedGpuId = selectedGpuId,
+            gpuOptions = gpuOptions,
+            glassStyle = glassStyle,
+            onGpuSelected = onGpuSelected,
+        )
         ProgressHeroCard(status, glassStyle)
         BestSummaryCard(status, visibleMetrics)
         MetricGrid(status, visibleMetrics, glassStyle, onMetricSwap, onMetricMove)
         MiniChartCard(status, visibleMetrics, glassStyle)
+    }
+}
+
+
+@Composable
+private fun GpuSelectorCard(
+    rootStatus: TrainingStatus,
+    selectedGpuId: String,
+    gpuOptions: List<String>,
+    glassStyle: Boolean,
+    onGpuSelected: (String) -> Unit,
+) {
+    if (gpuOptions.isEmpty()) return
+
+    ElevatedCard(
+        shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = glassPanelColor(glassStyle)),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (glassStyle) 4.dp else 1.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "GPU 视图",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                text = "检测到多个训练任务分布在不同显卡，可切换查看单卡任务。",
+                color = Color(0xFF6B7280),
+            )
+            GpuFilterButton(
+                label = "全部",
+                detail = "${rootStatus.runs.size} 个任务",
+                selected = selectedGpuId == AllGpuFilter,
+                onClick = { onGpuSelected(AllGpuFilter) },
+            )
+            gpuOptions.forEach { gpuId ->
+                val run = rootStatus.statusForGpu(gpuId)
+                GpuFilterButton(
+                    label = "GPU $gpuId",
+                    detail = run.runDisplayName(),
+                    selected = selectedGpuId == gpuId,
+                    onClick = { onGpuSelected(gpuId) },
+                )
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun GpuFilterButton(
+    label: String,
+    detail: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val content: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, fontWeight = FontWeight.SemiBold)
+            Text(
+                detail,
+                color = if (selected) Color.White else Color(0xFF6B7280),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+    }
+    if (selected) {
+        Button(
+            onClick = onClick,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth(),
+            content = { content() },
+        )
+    } else {
+        OutlinedButton(
+            onClick = onClick,
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.fillMaxWidth(),
+            content = { content() },
+        )
     }
 }
 
@@ -1548,8 +1684,12 @@ private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>, 
 @Composable
 private fun ChartsScreen(
     status: TrainingStatus,
+    rootStatus: TrainingStatus,
+    selectedGpuId: String,
+    gpuOptions: List<String>,
     selectedMetrics: List<String>,
     glassStyle: Boolean,
+    onGpuSelected: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -1564,6 +1704,13 @@ private fun ChartsScreen(
             fontWeight = FontWeight.Bold,
         )
         Text("曲线只显示你在设置中勾选、并且服务器实际检测到的指标。", color = Color(0xFF6B7280))
+        GpuSelectorCard(
+            rootStatus = rootStatus,
+            selectedGpuId = selectedGpuId,
+            gpuOptions = gpuOptions,
+            glassStyle = glassStyle,
+            onGpuSelected = onGpuSelected,
+        )
 
         val chartMetrics = chooseChartMetrics(status, selectedMetrics).filter { metric ->
             status.history.count { it.metrics[metric] != null } >= 2
@@ -2296,6 +2443,11 @@ private suspend fun fetchStatusJson(client: OkHttpClient, baseUrl: String, token
 
 
 private fun parseTrainingStatus(json: JSONObject): TrainingStatus {
+    return parseTrainingStatus(json, includeRuns = true)
+}
+
+
+private fun parseTrainingStatus(json: JSONObject, includeRuns: Boolean): TrainingStatus {
     val metricName = json.optCleanString("metric_name", "IoU")
     val metrics = json.optJSONObject("metrics").toDoubleMap().toMutableMap()
     val currentMetric = json.optNullableDouble("current_iou")
@@ -2320,9 +2472,16 @@ private fun parseTrainingStatus(json: JSONObject): TrainingStatus {
         parseStringArray(json.optJSONArray("available_metrics")),
         metrics.keys.toList() + bestMetrics.keys.toList() + history.flatMap { it.metrics.keys },
     )
+    val gpuIds = mergeMetricOptions(
+        parseStringArray(json.optJSONArray("gpu_ids")),
+        listOf(json.optCleanString("gpu_id")),
+    )
+    val runs = if (includeRuns) parseStatusRuns(json.optJSONArray("runs")) else emptyList()
 
     return TrainingStatus(
+        runId = json.optCleanString("run_id").takeIf { it.isNotBlank() },
         status = json.optCleanString("status", "idle"),
+        gpuIds = gpuIds,
         epoch = json.optInt("epoch", 0),
         totalEpochs = json.optInt("total_epochs", 0),
         metrics = metrics,
@@ -2333,7 +2492,19 @@ private fun parseTrainingStatus(json: JSONObject): TrainingStatus {
         updatedAt = json.optCleanString("updated_at"),
         history = history,
         availableMetrics = availableMetrics,
+        runs = runs,
     )
+}
+
+
+private fun parseStatusRuns(array: JSONArray?): List<TrainingStatus> {
+    if (array == null) return emptyList()
+    val runs = mutableListOf<TrainingStatus>()
+    for (index in 0 until array.length()) {
+        val item = array.optJSONObject(index) ?: continue
+        runs += parseTrainingStatus(item, includeRuns = false)
+    }
+    return runs
 }
 
 
@@ -2416,6 +2587,16 @@ private fun JSONObject.optCleanString(name: String, fallback: String = ""): Stri
     if (!has(name) || isNull(name)) return fallback
     val value = optString(name, fallback).trim()
     return if (value.equals("null", ignoreCase = true)) fallback else value
+}
+
+
+private fun gpuLabel(gpuIds: List<String>): String {
+    return gpuIds.filter { it.isNotBlank() }.joinToString(" + ") { "GPU $it" }
+}
+
+
+private fun gpuIdComparator(): Comparator<String> {
+    return compareBy<String> { it.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it }
 }
 
 

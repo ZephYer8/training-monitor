@@ -225,6 +225,7 @@ def main() -> None:
     parser.add_argument("--total-epochs", type=int, default=0)
     parser.add_argument("--interval", type=float, default=10.0)
     parser.add_argument("--once", action="store_true", help="scan once and print parse diagnostics")
+    parser.add_argument("--max-active-runs", type=int, default=8, help="maximum parsed log files to report each scan")
     parser.add_argument(
         "--roots",
         nargs="*",
@@ -282,51 +283,57 @@ def main() -> None:
         return
 
     monitor = TrainingMonitor(args.server_url, token=args.token)
-    active_file: Optional[Path] = None
-    last_sent: Optional[Tuple[Path, int, Tuple[Tuple[str, float], ...], Optional[int]]] = None
+    known_files: set = set()
+    last_sent: dict = {}
 
     while True:
-        parsed_file = None
+        parsed_files = []
         for candidate in latest_files(args.roots):
             parsed = safe_parse_file(candidate, args.total_epochs)
             if parsed is None:
                 continue
             total_epochs, best, latest, rows = parsed
             if latest is not None:
-                parsed_file = candidate, total_epochs, best, latest, rows
+                parsed_files.append((candidate, total_epochs, best, latest, rows))
+            if len(parsed_files) >= max(1, args.max_active_runs):
                 break
 
-        if parsed_file is None:
+        if not parsed_files:
             print("no supported training log found", flush=True)
             time.sleep(args.interval)
             continue
 
-        path, total_epochs, best, latest, rows = parsed_file
+        active_paths = {item[0] for item in parsed_files}
+        for stale_path in list(last_sent):
+            if stale_path not in active_paths:
+                last_sent.pop(stale_path, None)
+                known_files.discard(stale_path)
 
-        current = (path, latest[1], tuple(sorted(latest[4].items())), latest[3])
-        run_id = str(path)
+        for path, total_epochs, best, latest, rows in parsed_files:
+            current = (path, latest[1], tuple(sorted(latest[4].items())), latest[3])
+            run_id = str(path)
 
-        if active_file != path:
-            print(f"switch to training file: {path}", flush=True)
-            send_history_snapshot(monitor, run_id, total_epochs, rows)
-            active_file = path
-            last_sent = current
-        elif current != last_sent:
-            monitor.log(
-                run_id=run_id,
-                epoch=latest[1],
-                total_epochs=total_epochs,
-                iou=latest[2],
-                metric_name=latest[0],
-                metrics=latest[4],
-                eta_seconds=latest[3],
-                status="finished" if total_epochs > 0 and latest[1] >= total_epochs else "training",
-            )
-            print(
-                f"sent epoch={latest[1]}/{total_epochs}, metric={latest[2]:.4f}, file={path}",
-                flush=True,
-            )
-            last_sent = current
+            if path not in known_files:
+                print(f"track training file: {path}", flush=True)
+                send_history_snapshot(monitor, run_id, total_epochs, rows)
+                known_files.add(path)
+                last_sent[path] = current
+            elif current != last_sent.get(path):
+                monitor.log(
+                    run_id=run_id,
+                    epoch=latest[1],
+                    total_epochs=total_epochs,
+                    iou=latest[2],
+                    metric_name=latest[0],
+                    metrics=latest[4],
+                    eta_seconds=latest[3],
+                    status="finished" if total_epochs > 0 and latest[1] >= total_epochs else "training",
+                )
+                print(
+                    f"sent epoch={latest[1]}/{total_epochs}, metric={latest[2]:.4f}, file={path}",
+                    flush=True,
+                )
+                last_sent[path] = current
 
         time.sleep(args.interval)
 
