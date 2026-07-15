@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title">
+  <title id="title">模迹应用图标</title>
+  <rect width="108" height="108" rx="24" fill="#155EEF"/>
+  <rect x="18" y="18" width="72" height="72" rx="14" fill="#0B1220" opacity=".14"/>
+  <rect x="15" y="14" width="72" height="72" rx="14" fill="#FFFFFF"/>
+  <path d="M26 28h50M26 72h50" stroke="#EAF0FF" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="27" cy="27" r="3" fill="#155EEF"/>
+  <circle cx="37" cy="27" r="3" fill="#155EEF"/>
+  <path d="M27 65V40M27 65h53" fill="none" stroke="#C7D7FE" stroke-width="3" stroke-linecap="round"/>
+  <path d="M30 60l11-10 10 5 12-14 9 5 10-13" fill="none" stroke="#155EEF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="82" cy="33" r="5" fill="#12B76A"/>
+</svg>

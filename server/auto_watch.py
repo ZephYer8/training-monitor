@@ -5,9 +5,10 @@ import time
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+import requests
+
 from openmmlab_log import (
     best_row as best_openmmlab_row,
-    infer_total_epochs,
     parse_openmmlab_history,
     parse_openmmlab_line,
 )
@@ -38,7 +39,11 @@ def is_supported(path: Path) -> bool:
 
 def latest_files(roots: List[str]) -> List[Path]:
     candidates = []
+    seen = set()
     for path in iter_files(roots):
+        if path in seen:
+            continue
+        seen.add(path)
         try:
             candidates.append((path.stat().st_mtime, path))
         except OSError:
@@ -117,7 +122,7 @@ def parse_csv_history(path: Path, total_epochs_fallback: int) -> Tuple[int, List
     if min(item[1] for item in rows) == 0:
         rows = [(name, epoch + 1, value, eta, metrics) for name, epoch, value, eta, metrics in rows]
 
-    total_epochs = total_epochs_fallback if total_epochs_fallback > 0 else max(item[1] for item in rows)
+    total_epochs = total_epochs_fallback if total_epochs_fallback > 0 else 0
     return total_epochs, rows
 
 
@@ -205,17 +210,20 @@ def send_history_snapshot(
     total_epochs: int,
     rows: List[Metric],
 ) -> None:
-    for row in rows[-500:]:
-        monitor.log(
-            run_id=run_id,
-            epoch=row[1],
-            total_epochs=total_epochs,
-            iou=row[2],
-            metric_name=row[0],
-            metrics=row[4],
-            eta_seconds=row[3],
-            status="finished" if total_epochs > 0 and row[1] >= total_epochs else "training",
-        )
+    updates = [
+        {
+            "run_id": run_id,
+            "epoch": row[1],
+            "total_epochs": total_epochs,
+            "iou": row[2],
+            "metric_name": row[0],
+            "metrics": row[4],
+            "eta_seconds": row[3],
+            "status": "finished" if total_epochs > 0 and row[1] >= total_epochs else "training",
+        }
+        for row in rows[-500:]
+    ]
+    monitor.log_batch(updates)
 
 
 def main() -> None:
@@ -310,25 +318,33 @@ def main() -> None:
                 known_files.discard(stale_path)
 
         for path, total_epochs, best, latest, rows in parsed_files:
-            current = (path, latest[1], tuple(sorted(latest[4].items())), latest[3])
+            current = (path, latest[1], total_epochs, tuple(sorted(latest[4].items())), latest[3])
             run_id = str(path)
 
             if path not in known_files:
                 print(f"track training file: {path}", flush=True)
-                send_history_snapshot(monitor, run_id, total_epochs, rows)
+                try:
+                    send_history_snapshot(monitor, run_id, total_epochs, rows)
+                except requests.RequestException as exc:
+                    print(f"sync failed, will retry: {path} ({exc})", flush=True)
+                    continue
                 known_files.add(path)
                 last_sent[path] = current
             elif current != last_sent.get(path):
-                monitor.log(
-                    run_id=run_id,
-                    epoch=latest[1],
-                    total_epochs=total_epochs,
-                    iou=latest[2],
-                    metric_name=latest[0],
-                    metrics=latest[4],
-                    eta_seconds=latest[3],
-                    status="finished" if total_epochs > 0 and latest[1] >= total_epochs else "training",
-                )
+                try:
+                    monitor.log(
+                        run_id=run_id,
+                        epoch=latest[1],
+                        total_epochs=total_epochs,
+                        iou=latest[2],
+                        metric_name=latest[0],
+                        metrics=latest[4],
+                        eta_seconds=latest[3],
+                        status="finished" if total_epochs > 0 and latest[1] >= total_epochs else "training",
+                    )
+                except requests.RequestException as exc:
+                    print(f"update failed, will retry: {path} ({exc})", flush=True)
+                    continue
                 print(
                     f"sent epoch={latest[1]}/{total_epochs}, metric={latest[2]:.4f}, file={path}",
                     flush=True,

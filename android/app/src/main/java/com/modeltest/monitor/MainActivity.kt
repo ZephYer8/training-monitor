@@ -42,14 +42,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -63,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,7 +72,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -123,6 +122,7 @@ private const val SettingsPrefs = "settings"
 private const val SecureSettingsPrefs = "secure_settings"
 private const val TokenKey = "token"
 private const val NotificationEnabledKey = "notification_enabled"
+private const val HuaweiWatchSyncEnabledKey = "huawei_watch_sync_enabled"
 private const val FinishedNotificationSignatureKey = "finished_notification_signature"
 private const val PrivacyAcceptedKey = "privacy_accepted"
 private const val UiStyleKey = "ui_style"
@@ -187,7 +187,7 @@ class TrainingNotificationService : Service() {
 
     private suspend fun pollTrainingStatus() {
         while (true) {
-            val delaySeconds = loadRefreshSeconds(this@TrainingNotificationService).coerceIn(1, 5)
+            val delaySeconds = loadRefreshSeconds(this@TrainingNotificationService).coerceIn(5, 30)
             val url = loadBaseUrl(this@TrainingNotificationService)
             val token = loadToken(this@TrainingNotificationService)
 
@@ -254,12 +254,7 @@ class TrainingNotificationService : Service() {
     }
 
     private fun removeActiveTrainingNotification() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(true)
-        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
         notificationManager(this).cancel(TrainingNotificationId)
     }
 }
@@ -346,30 +341,39 @@ data class TrainingStatus(
 }
 
 
+private val BrandBlue = Color(0xFF155EEF)
+private val BrandGreen = Color(0xFF12B76A)
+private val Ink = Color(0xFF101828)
+private val MutedInk = Color(0xFF667085)
+private val AppBackground = Color(0xFFF7F9FC)
+private val Hairline = Color(0xFFE4E7EC)
+private val SoftBlue = Color(0xFFEFF4FF)
+
 private val AppColors = lightColorScheme(
-    primary = Color(0xFF2563EB),
-    background = Color(0xFFF5F7FB),
+    primary = BrandBlue,
+    secondary = BrandGreen,
+    tertiary = Color(0xFFF79009),
+    background = AppBackground,
     surface = Color.White,
-    onSurface = Color(0xFF111827),
+    surfaceVariant = Color(0xFFF2F4F7),
+    onSurface = Ink,
+    onSurfaceVariant = MutedInk,
+    outline = Color(0xFFD0D5DD),
+    error = Color(0xFFD92D20),
 )
 
 private val ChartColors = listOf(
-    Color(0xFF2563EB),
-    Color(0xFF16A34A),
-    Color(0xFFDC2626),
-    Color(0xFF9333EA),
-    Color(0xFFF59E0B),
-    Color(0xFF0891B2),
+    BrandBlue,
+    BrandGreen,
+    Color(0xFFF79009),
+    Color(0xFFF04438),
+    Color(0xFF06AED4),
+    Color(0xFF7A5AF8),
 )
 
 
 private fun glassPanelColor(glassStyle: Boolean): Color {
-    return if (glassStyle) Color(0x98FFFFFF) else Color.White
-}
-
-
-private fun glassPanelBorder(glassStyle: Boolean): BorderStroke? {
-    return if (glassStyle) BorderStroke(1.dp, Color(0xDDFFFFFF)) else null
+    return if (glassStyle) Color(0xE8FFFFFF) else Color.White
 }
 
 
@@ -412,30 +416,6 @@ private fun Modifier.glassMaterial(glassStyle: Boolean, radius: Dp): Modifier {
 }
 
 
-private fun Modifier.darkGlassMaterial(glassStyle: Boolean, radius: Dp): Modifier {
-    if (!glassStyle) return this
-    return drawWithContent {
-        val corner = CornerRadius(radius.toPx(), radius.toPx())
-        drawRoundRect(
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.11f),
-                    Color.White.copy(alpha = 0.03f),
-                    Color.Transparent,
-                ),
-            ),
-            cornerRadius = corner,
-        )
-        drawContent()
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.18f),
-            cornerRadius = corner,
-            style = Stroke(width = 1.dp.toPx()),
-        )
-    }
-}
-
-
 @Composable
 fun TrainingMonitorApp() {
     MaterialTheme(colorScheme = AppColors) {
@@ -455,14 +435,17 @@ private fun MonitorRoot() {
             .build()
     }
 
-    var page by rememberSaveable { mutableStateOf(AppPage.Dashboard.name) }
     var savedUrl by rememberSaveable { mutableStateOf(loadBaseUrl(context)) }
     var savedToken by rememberSaveable { mutableStateOf(loadToken(context)) }
+    var page by rememberSaveable {
+        mutableStateOf(if (savedUrl.isBlank()) AppPage.Settings.name else AppPage.Dashboard.name)
+    }
     var draftUrl by rememberSaveable { mutableStateOf(savedUrl) }
     var draftToken by rememberSaveable { mutableStateOf(savedToken) }
-    var refreshSeconds by rememberSaveable { mutableStateOf(loadRefreshSeconds(context)) }
+    var refreshSeconds by rememberSaveable { mutableIntStateOf(loadRefreshSeconds(context)) }
     var selectedMetricsText by rememberSaveable { mutableStateOf(loadSelectedMetricsText(context)) }
     var notificationEnabled by rememberSaveable { mutableStateOf(loadNotificationEnabled(context)) }
+    var huaweiWatchSyncEnabled by rememberSaveable { mutableStateOf(loadHuaweiWatchSyncEnabled(context)) }
     var privacyAccepted by rememberSaveable { mutableStateOf(loadPrivacyAccepted(context)) }
     var uiStyle by rememberSaveable { mutableStateOf(loadUiStyle(context)) }
     var status by remember { mutableStateOf(loadCachedStatus(context) ?: TrainingStatus()) }
@@ -471,17 +454,30 @@ private fun MonitorRoot() {
     var error by remember { mutableStateOf<String?>(null) }
     var isRefreshing by remember { mutableStateOf(false) }
     var testMessage by rememberSaveable { mutableStateOf("") }
+    var pendingHuaweiWatchEnable by rememberSaveable { mutableStateOf(false) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         if (granted) {
             notificationEnabled = true
             saveNotificationEnabled(context, true)
+            if (pendingHuaweiWatchEnable) {
+                huaweiWatchSyncEnabled = true
+                saveHuaweiWatchSyncEnabled(context, true)
+                testMessage = "华为手表同步已开启，请在华为运动健康里允许“模迹”通知同步到 FIT 4"
+            } else {
+                testMessage = "通知已开启，训练中才会显示到通知栏"
+            }
+            pendingHuaweiWatchEnable = false
             syncTrainingNotificationService(context, status, privacyAccepted)
-            testMessage = "通知已开启，训练中才会显示到通知栏"
         } else {
             notificationEnabled = false
             saveNotificationEnabled(context, false)
+            if (pendingHuaweiWatchEnable) {
+                huaweiWatchSyncEnabled = false
+                saveHuaweiWatchSyncEnabled(context, false)
+            }
+            pendingHuaweiWatchEnable = false
             stopTrainingNotificationService(context)
             testMessage = "未授予通知权限，通知未开启"
         }
@@ -535,6 +531,7 @@ private fun MonitorRoot() {
 
     LaunchedEffect(
         notificationEnabled,
+        huaweiWatchSyncEnabled,
         savedUrl,
         savedToken,
         selectedMetricsText,
@@ -583,16 +580,7 @@ private fun MonitorRoot() {
                         glassStyle = glassStyle,
                         onGpuSelected = { selectedGpuId = it },
                         onRefresh = { scope.launch { refreshOnce() } },
-                        onMetricSwap = { first, second ->
-                            val next = swapMetricOrder(displayStatus, selectedMetrics, visibleMetrics, first, second)
-                            selectedMetricsText = next
-                            saveSelectedMetricsText(context, next)
-                        },
-                        onMetricMove = { metric, delta ->
-                            val next = moveMetricOrder(displayStatus, selectedMetrics, visibleMetrics, metric, delta)
-                            selectedMetricsText = next
-                            saveSelectedMetricsText(context, next)
-                        },
+                        onOpenSettings = { page = AppPage.Settings.name },
                     )
 
                 AppPage.Charts -> ChartsScreen(
@@ -612,6 +600,7 @@ private fun MonitorRoot() {
                         metricOptions = metricOptions,
                         selectedMetrics = selectedMetrics,
                         notificationEnabled = notificationEnabled,
+                        huaweiWatchSyncEnabled = huaweiWatchSyncEnabled,
                         uiStyle = uiStyle,
                         testMessage = testMessage,
                         onUrlChange = { draftUrl = it },
@@ -632,13 +621,35 @@ private fun MonitorRoot() {
                                     syncTrainingNotificationService(context, status, privacyAccepted)
                                     testMessage = "通知已开启，训练中才会显示到通知栏"
                                 } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    pendingHuaweiWatchEnable = false
                                     notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                 }
                             } else {
                                 notificationEnabled = false
+                                huaweiWatchSyncEnabled = false
                                 saveNotificationEnabled(context, false)
+                                saveHuaweiWatchSyncEnabled(context, false)
                                 stopTrainingNotificationService(context)
                                 testMessage = "通知已关闭"
+                            }
+                        },
+                        onHuaweiWatchSyncChange = {
+                            if (it) {
+                                if (hasNotificationPermission(context)) {
+                                    notificationEnabled = true
+                                    huaweiWatchSyncEnabled = true
+                                    saveNotificationEnabled(context, true)
+                                    saveHuaweiWatchSyncEnabled(context, true)
+                                    syncTrainingNotificationService(context, status, privacyAccepted)
+                                    testMessage = "华为手表同步已开启，请在华为运动健康里允许“模迹”通知同步到 FIT 4"
+                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    pendingHuaweiWatchEnable = true
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            } else {
+                                huaweiWatchSyncEnabled = false
+                                saveHuaweiWatchSyncEnabled(context, false)
+                                testMessage = "华为手表同步已关闭"
                             }
                         },
                         onUiStyleChange = {
@@ -657,7 +668,9 @@ private fun MonitorRoot() {
                             draftToken = ""
                             saveToken(context, "")
                             notificationEnabled = false
+                            huaweiWatchSyncEnabled = false
                             saveNotificationEnabled(context, false)
+                            saveHuaweiWatchSyncEnabled(context, false)
                             stopTrainingNotificationService(context)
                             testMessage = "Token 已清除，通知已停止"
                         },
@@ -665,25 +678,39 @@ private fun MonitorRoot() {
                             privacyAccepted = false
                             savePrivacyAccepted(context, false)
                             notificationEnabled = false
+                            huaweiWatchSyncEnabled = false
                             saveNotificationEnabled(context, false)
+                            saveHuaweiWatchSyncEnabled(context, false)
                             stopTrainingNotificationService(context)
                             testMessage = "已撤回同意，应用将停止刷新和通知"
                         },
-                        onSave = {
-                            savedUrl = normalizeBaseUrl(draftUrl)
+                        onSave = save@{
+                            val nextUrl = normalizeBaseUrl(draftUrl)
+                            if (nextUrl.isBlank()) {
+                                testMessage = "请先填写后端地址"
+                                return@save
+                            }
+                            savedUrl = nextUrl
                             draftUrl = savedUrl
                             savedToken = draftToken.trim()
                             saveBaseUrl(context, savedUrl)
                             saveToken(context, savedToken)
                             hasFreshStatus = false
                             stopTrainingNotificationService(context)
-                            testMessage = "设置已保存"
+                            error = null
+                            testMessage = "设置已保存，正在连接..."
+                            page = AppPage.Dashboard.name
                         },
                         onTest = {
                             scope.launch {
+                                val testUrl = normalizeBaseUrl(draftUrl)
+                                if (testUrl.isBlank()) {
+                                    testMessage = "请先填写后端地址"
+                                    return@launch
+                                }
                                 testMessage = "正在测试连接..."
                                 runCatching {
-                                    val raw = fetchStatusJson(client, normalizeBaseUrl(draftUrl), draftToken.trim())
+                                    val raw = fetchStatusJson(client, testUrl, draftToken.trim())
                                     saveCachedStatus(context, raw)
                                     parseTrainingStatus(JSONObject(raw))
                                 }
@@ -730,10 +757,9 @@ private fun AppBackdrop(glassStyle: Boolean) {
     val background = if (glassStyle) {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xFFFCFDFF),
-                Color(0xFFEAF3FF),
-                Color(0xFFF8F3FF),
-                Color(0xFFEFFAF6),
+                Color(0xFFFBFCFE),
+                Color(0xFFEEF4FF),
+                Color(0xFFECFDF3),
             ),
             start = Offset.Zero,
             end = Offset(900f, 1600f),
@@ -742,51 +768,16 @@ private fun AppBackdrop(glassStyle: Boolean) {
         Brush.verticalGradient(
             colors = listOf(
                 MaterialTheme.colorScheme.background,
-                Color(0xFFF1F5F9),
+                Color(0xFFF2F4F7),
             ),
         )
     }
 
-    Box(
+    Spacer(
         modifier = Modifier
             .fillMaxSize()
             .background(background),
-    ) {
-        if (glassStyle) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                drawCircle(
-                    color = Color(0xCCFFFFFF),
-                    radius = size.width * 0.52f,
-                    center = Offset(size.width * 0.08f, size.height * 0.08f),
-                )
-                drawCircle(
-                    color = Color(0x453B82F6),
-                    radius = size.width * 0.48f,
-                    center = Offset(size.width * 0.95f, size.height * 0.14f),
-                )
-                drawCircle(
-                    color = Color(0x3022C55E),
-                    radius = size.width * 0.48f,
-                    center = Offset(size.width * 0.90f, size.height * 0.84f),
-                )
-                drawCircle(
-                    color = Color(0x34A78BFA),
-                    radius = size.width * 0.38f,
-                    center = Offset(size.width * 0.12f, size.height * 0.72f),
-                )
-                drawCircle(
-                    color = Color(0x2E06B6D4),
-                    radius = size.width * 0.30f,
-                    center = Offset(size.width * 0.34f, size.height * 0.34f),
-                )
-                drawCircle(
-                    color = Color(0x38FFFFFF),
-                    radius = size.width * 0.22f,
-                    center = Offset(size.width * 0.68f, size.height * 0.55f),
-                )
-            }
-        }
-    }
+    )
 }
 
 
@@ -802,9 +793,9 @@ private fun DashboardScreen(
     glassStyle: Boolean,
     onGpuSelected: (String) -> Unit,
     onRefresh: () -> Unit,
-    onMetricSwap: (String, String) -> Unit,
-    onMetricMove: (String, Int) -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
+    val hasTrainingData = status.epoch > 0 || status.metrics.isNotEmpty() || status.history.isNotEmpty()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -818,23 +809,59 @@ private fun DashboardScreen(
             isRefreshing = isRefreshing,
             onRefresh = onRefresh,
         )
-        GpuSelectorCard(
-            rootStatus = rootStatus,
-            selectedGpuId = selectedGpuId,
-            gpuOptions = gpuOptions,
-            glassStyle = glassStyle,
-            onGpuSelected = onGpuSelected,
-        )
-        ProgressHeroCard(status, glassStyle)
-        BestSummaryCard(status, visibleMetrics)
-        MetricGrid(status, visibleMetrics, glassStyle, onMetricSwap, onMetricMove)
-        MiniChartCard(status, visibleMetrics, glassStyle)
+        if (!hasTrainingData) {
+            SetupPromptCard(error, glassStyle, onOpenSettings)
+        } else {
+            GpuSelectorBar(
+                rootStatus = rootStatus,
+                selectedGpuId = selectedGpuId,
+                gpuOptions = gpuOptions,
+                glassStyle = glassStyle,
+                onGpuSelected = onGpuSelected,
+            )
+            ProgressHeroCard(status, glassStyle)
+            MiniChartCard(status, visibleMetrics, glassStyle)
+            val primaryMetric = status.primaryMetric()
+            val secondaryMetrics = visibleMetrics.filterNot { it == primaryMetric }
+            if (secondaryMetrics.isNotEmpty()) {
+                MetricGrid(status, secondaryMetrics, glassStyle)
+            }
+        }
     }
 }
 
 
 @Composable
-private fun GpuSelectorCard(
+private fun SetupPromptCard(error: String?, glassStyle: Boolean, onOpenSettings: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = glassPanelColor(glassStyle),
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xCCFFFFFF) else Hairline),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = if (error == null) "连接训练服务器" else "暂时无法获取训练状态",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = error ?: "填写服务器地址和访问 Token 后，训练进度、指标与趋势会显示在这里。",
+                color = if (error == null) MutedInk else Color(0xFFB42318),
+            )
+            Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
+                Text(if (error == null) "开始配置" else "检查连接设置")
+            }
+        }
+    }
+}
+
+
+@Composable
+private fun GpuSelectorBar(
     rootStatus: TrainingStatus,
     selectedGpuId: String,
     gpuOptions: List<String>,
@@ -843,139 +870,26 @@ private fun GpuSelectorCard(
 ) {
     if (gpuOptions.isEmpty()) return
 
-    ElevatedCard(
-        shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = glassPanelColor(glassStyle)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (glassStyle) 4.dp else 1.dp),
-        modifier = Modifier.fillMaxWidth(),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = "GPU 视图",
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = "检测到多个训练任务分布在不同显卡，可切换查看单卡任务。",
-                color = Color(0xFF6B7280),
-            )
-            GpuFilterButton(
-                label = "全部",
-                detail = "${rootStatus.runs.size} 个任务",
-                selected = selectedGpuId == AllGpuFilter,
-                onClick = { onGpuSelected(AllGpuFilter) },
-            )
-            gpuOptions.forEach { gpuId ->
-                val run = rootStatus.statusForGpu(gpuId)
-                GpuFilterButton(
-                    label = "GPU $gpuId",
-                    detail = run.runDisplayName(),
-                    selected = selectedGpuId == gpuId,
-                    onClick = { onGpuSelected(gpuId) },
-                )
-            }
-        }
-    }
-}
-
-
-@Composable
-private fun GpuFilterButton(
-    label: String,
-    detail: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val content: @Composable () -> Unit = {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(label, fontWeight = FontWeight.SemiBold)
-            Text(
-                detail,
-                color = if (selected) Color.White else Color(0xFF6B7280),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 12.dp),
-            )
-        }
-    }
-    if (selected) {
-        Button(
-            onClick = onClick,
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.fillMaxWidth(),
-            content = { content() },
+        MetricChip(
+            text = "全部 ${rootStatus.runs.size}",
+            selected = selectedGpuId == AllGpuFilter,
+            onClick = { onGpuSelected(AllGpuFilter) },
+            glassStyle = glassStyle,
         )
-    } else {
-        OutlinedButton(
-            onClick = onClick,
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.fillMaxWidth(),
-            content = { content() },
-        )
-    }
-}
-
-
-@Composable
-private fun BestSummaryCard(status: TrainingStatus, visibleMetrics: List<String>) {
-    val metric = visibleMetrics.firstOrNull() ?: status.primaryMetric()
-    val best = metric?.let { status.bestMetrics[it] }
-    val bestEpoch = metric?.let { status.bestEpochs[it] }
-    val current = metric?.let { status.latestMetricValue(it) }
-
-    ElevatedCard(
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Color(0xFF111827)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1.2f)) {
-                Text(
-                    text = "Best ${metricDisplayName(metric ?: status.metricName)}",
-                    color = Color(0xFFCBD5E1),
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = formatMetric(best),
-                    color = Color.White,
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Best Epoch", color = Color(0xFFCBD5E1), fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = bestEpoch?.let { "$it" } ?: "--",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Current", color = Color(0xFFCBD5E1), fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = formatMetric(current),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+        gpuOptions.forEach { gpuId ->
+            MetricChip(
+                text = "GPU $gpuId",
+                selected = selectedGpuId == gpuId,
+                onClick = { onGpuSelected(gpuId) },
+                glassStyle = glassStyle,
+            )
         }
     }
 }
@@ -988,37 +902,41 @@ private fun Header(
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = "训迹",
-                style = MaterialTheme.typography.headlineLarge,
+                text = "模迹",
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
-            Text(
-                text = "AI Training Console",
-                color = Color(0xFF2563EB),
-                fontWeight = FontWeight.SemiBold,
-            )
+            StatusPill(status = if (error == null) status.status else "error")
+        }
+        Text(
+            text = status.runDisplayName(),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = syncText(status, error, isRefreshing),
-                color = if (error == null) Color(0xFF6B7280) else Color(0xFFB91C1C),
+                color = if (error == null) MutedInk else Color(0xFFB42318),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
-        }
-        StatusPill(status = if (error == null) status.status else "error")
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(
-            onClick = onRefresh,
-            shape = RoundedCornerShape(50),
-        ) {
-            Text("立即刷新")
+            TextButton(onClick = onRefresh, enabled = !isRefreshing) {
+                Text(if (isRefreshing) "刷新中" else "刷新")
+            }
         }
     }
 }
@@ -1031,8 +949,6 @@ private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
     val current = primaryMetric?.let { status.latestMetricValue(it) }
     val best = primaryMetric?.let { status.bestMetrics[it] }
     val bestEpoch = primaryMetric?.let { status.bestEpochs[it] }
-    val cardColor = glassPanelColor(glassStyle)
-    val consoleColor = if (glassStyle) Color(0xB80F172A) else Color(0xFF0F172A)
     val progressTrackColor = if (glassStyle) Color(0x78BFDBFE) else Color(0xFFE0E7FF)
     val progressText = if (hasTotal) {
         "${(status.progress * 100).toInt()}%"
@@ -1048,104 +964,44 @@ private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
     val metricTitle = primaryMetric?.let { metricDisplayName(it) } ?: "Metric"
 
     Surface(
-        shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
-        color = cardColor,
-        border = glassPanelBorder(glassStyle),
-        shadowElevation = if (glassStyle) 14.dp else 2.dp,
+        shape = RoundedCornerShape(12.dp),
+        color = glassPanelColor(glassStyle),
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xCCFFFFFF) else Hairline),
+        shadowElevation = if (glassStyle) 3.dp else 0.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .glassMaterial(glassStyle, if (glassStyle) 24.dp else 10.dp),
+            .glassMaterial(glassStyle, 12.dp),
     ) {
         Column(
-            modifier = Modifier.padding(if (glassStyle) 20.dp else 18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Bottom,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "训练控制台",
-                        color = Color(0xFF2563EB),
-                        fontWeight = FontWeight.Bold,
+                        text = "训练进度",
+                        color = MutedInk,
+                        style = MaterialTheme.typography.labelLarge,
                     )
                     Text(
-                        "实时监测 Epoch、Best 指标和 ETA",
-                        color = Color(0xFF6B7280),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        text = epochText,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
-                ConsoleSignal(status.status)
-            }
-
-            Surface(
-                shape = RoundedCornerShape(if (glassStyle) 22.dp else 10.dp),
-                color = consoleColor,
-                border = if (glassStyle) BorderStroke(1.dp, Color(0x33FFFFFF)) else null,
-                shadowElevation = if (glassStyle) 10.dp else 0.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .darkGlassMaterial(glassStyle, if (glassStyle) 22.dp else 10.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(if (glassStyle) 18.dp else 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    GaugeDial(
-                        progress = status.progress,
-                        hasTotal = hasTotal,
-                        status = status.status,
-                        centerText = progressText,
-                        modifier = Modifier.size(132.dp),
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = progressText,
+                        color = statusAccent(status.status),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
                     )
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Text(
-                            text = statusConsoleTitle(status.status),
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        ConsoleLine("Epoch", epochText)
-                        ConsoleLine("ETA", if (hasTotal) etaText else "待估算")
-                        ConsoleLine("Mode", statusText(status.status))
-                    }
+                    Text(statusText(status.status), color = MutedInk)
                 }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                ConsoleReadout(
-                    label = "Best $metricTitle",
-                    value = formatMetric(best),
-                    hint = bestEpoch?.let { "epoch $it" } ?: "--",
-                    glassStyle = glassStyle,
-                    modifier = Modifier.weight(1f),
-                )
-                ConsoleReadout(
-                    label = "Current",
-                    value = formatMetric(current),
-                    hint = metricTitle,
-                    glassStyle = glassStyle,
-                    modifier = Modifier.weight(1f),
-                )
-                ConsoleReadout(
-                    label = "Progress",
-                    value = progressText,
-                    hint = if (hasTotal) "实时" else "未知总轮数",
-                    glassStyle = glassStyle,
-                    modifier = Modifier.weight(1f),
-                )
             }
 
             LinearProgressIndicator(
@@ -1154,178 +1010,63 @@ private fun ProgressHeroCard(status: TrainingStatus, glassStyle: Boolean) {
                 trackColor = progressTrackColor,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp),
+                    .height(7.dp),
             )
-        }
-    }
-}
 
-
-@Composable
-private fun ConsoleSignal(status: String) {
-    val color = statusAccent(status)
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = color.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.22f)),
-        modifier = Modifier.widthIn(min = 78.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Canvas(modifier = Modifier.size(8.dp)) {
-                drawCircle(color)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OverviewStat(
+                    label = "预计剩余",
+                    value = if (hasTotal) etaText else "待估算",
+                    modifier = Modifier.weight(1f),
+                )
+                OverviewStat(
+                    label = "当前 $metricTitle",
+                    value = formatMetric(current),
+                    modifier = Modifier.weight(1f),
+                )
+                OverviewStat(
+                    label = "最佳 $metricTitle",
+                    value = formatMetric(best),
+                    hint = bestEpoch?.let { "第 $it 轮" },
+                    modifier = Modifier.weight(1f),
+                )
             }
-            Text(
-                statusText(status),
-                color = color,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }
 
 
 @Composable
-private fun GaugeDial(
-    progress: Float,
-    hasTotal: Boolean,
-    status: String,
-    centerText: String,
+private fun OverviewStat(
+    label: String,
+    value: String,
     modifier: Modifier = Modifier,
+    hint: String? = null,
 ) {
-    val accent = statusAccent(status)
-    Canvas(modifier = modifier) {
-        val stroke = 10.dp.toPx()
-        val inset = stroke / 2f + 3.dp.toPx()
-        val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
-        val arcTopLeft = Offset(inset, inset)
-
-        drawCircle(Color(0xFF111827), radius = size.minDimension / 2f)
-        drawCircle(Color(0xFF1E293B), radius = size.minDimension / 2.35f)
-        drawArc(
-            color = Color(0xFF334155),
-            startAngle = 135f,
-            sweepAngle = 270f,
-            useCenter = false,
-            topLeft = arcTopLeft,
-            size = arcSize,
-            style = Stroke(width = stroke, cap = StrokeCap.Round),
-        )
-        drawArc(
-            color = accent,
-            startAngle = 135f,
-            sweepAngle = if (hasTotal) 270f * progress.coerceIn(0f, 1f) else 34f,
-            useCenter = false,
-            topLeft = arcTopLeft,
-            size = arcSize,
-            style = Stroke(width = stroke, cap = StrokeCap.Round),
-        )
-
-        repeat(9) { index ->
-            val angle = Math.toRadians((135 + index * 33.75).toDouble())
-            val outer = size.minDimension / 2.35f
-            val inner = outer - 9.dp.toPx()
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            drawLine(
-                color = Color(0xFF64748B),
-                start = Offset(
-                    cx + kotlin.math.cos(angle).toFloat() * inner,
-                    cy + kotlin.math.sin(angle).toFloat() * inner,
-                ),
-                end = Offset(
-                    cx + kotlin.math.cos(angle).toFloat() * outer,
-                    cy + kotlin.math.sin(angle).toFloat() * outer,
-                ),
-                strokeWidth = 1.5.dp.toPx(),
-                cap = StrokeCap.Round,
-            )
-        }
-
-        val valuePaint = Paint().apply {
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textSize = 24.dp.toPx()
-            color = android.graphics.Color.WHITE
-        }
-        val labelPaint = Paint().apply {
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            textSize = 10.dp.toPx()
-            color = android.graphics.Color.rgb(148, 163, 184)
-        }
-        drawContext.canvas.nativeCanvas.drawText(centerText, size.width / 2f, size.height / 2f + 4.dp.toPx(), valuePaint)
-        drawContext.canvas.nativeCanvas.drawText("PROGRESS", size.width / 2f, size.height / 2f + 24.dp.toPx(), labelPaint)
-    }
-}
-
-
-@Composable
-private fun ConsoleLine(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = Color(0xFF94A3B8))
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            value,
-            color = Color.White,
-            fontWeight = FontWeight.SemiBold,
+            text = label,
+            color = MutedInk,
+            style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-    }
-}
-
-
-@Composable
-private fun ConsoleReadout(
-    label: String,
-    value: String,
-    hint: String,
-    glassStyle: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = if (glassStyle) Color(0xEAF8FAFC) else Color(0xFFF8FAFC),
-        border = BorderStroke(1.dp, if (glassStyle) Color(0xBFE5EAF2) else Color(0xFFE5EAF2)),
-        modifier = modifier,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (hint != null) {
             Text(
-                label,
-                color = Color(0xFF64748B),
-                style = MaterialTheme.typography.bodySmall,
+                text = hint,
+                color = MutedInk,
+                style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                value,
-                color = Color(0xFF0F172A),
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                hint,
-                color = Color(0xFF94A3B8),
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -1334,20 +1075,10 @@ private fun ConsoleReadout(
 
 private fun statusAccent(status: String): Color {
     return when (status) {
-        "training" -> Color(0xFF2563EB)
-        "finished" -> Color(0xFF16A34A)
-        "error" -> Color(0xFFDC2626)
-        else -> Color(0xFF64748B)
-    }
-}
-
-
-private fun statusConsoleTitle(status: String): String {
-    return when (status) {
-        "training" -> "训练任务运行中"
-        "finished" -> "训练完成，结果已保存"
-        "error" -> "连接异常，保留缓存"
-        else -> "等待训练任务"
+        "training" -> BrandBlue
+        "finished" -> BrandGreen
+        "error" -> Color(0xFFD92D20)
+        else -> MutedInk
     }
 }
 
@@ -1357,147 +1088,33 @@ private fun MetricGrid(
     status: TrainingStatus,
     visibleMetrics: List<String>,
     glassStyle: Boolean,
-    onMetricSwap: (String, String) -> Unit,
-    onMetricMove: (String, Int) -> Unit,
 ) {
-    if (visibleMetrics.isEmpty()) {
-        EmptyCard("还没有指标", "等待训练脚本同步指标后，这里会自动显示。", glassStyle)
-        return
-    }
-
-    var selectedMetric by rememberSaveable { mutableStateOf<String?>(null) }
-    var editingLayout by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(visibleMetrics) {
-        selectedMetric?.let { metric ->
-            if (metric !in visibleMetrics) {
-                selectedMetric = null
-            }
-        }
-    }
-    LaunchedEffect(editingLayout) {
-        if (!editingLayout) selectedMetric = null
-    }
-
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
-                Text(
-                    text = "指标看板",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    text = if (editingLayout) {
-                        "可前移、后移，也可点两个方块交换"
-                    } else {
-                        "显示设置中勾选的指标，可自定义顺序"
-                    },
-                    color = Color(0xFF6B7280),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            TextButton(onClick = { editingLayout = !editingLayout }) {
-                Text(if (editingLayout) "完成" else "调整布局")
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "其他指标",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "显示指标可在设置中随时调整",
+                color = MutedInk,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
-        if (editingLayout) {
-            Surface(
-                color = Color(0xFFF8FAFC),
-                contentColor = Color(0xFF111827),
-                shape = RoundedCornerShape(10.dp),
+        visibleMetrics.chunked(2).forEach { rowMetrics ->
+            Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Surface(
-                            color = Color(0xFF111827),
-                            contentColor = Color.White,
-                            shape = RoundedCornerShape(50),
-                        ) {
-                            Text(
-                                text = "布局编辑",
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        Text(
-                            text = "把最关注的指标放到前面，首页会按这个顺序显示。",
-                            color = Color(0xFF6B7280),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    Text(
-                        text = selectedMetric?.let {
-                            "已选中 ${metricDisplayName(it)}，再点另一个方块即可交换位置。"
-                        } ?: "点击方块可选择交换；也可以用每张卡片里的置顶、前移、后移、置底按钮微调。",
-                        color = Color(0xFF2563EB),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
-        visibleMetrics.chunked(2).forEachIndexed { rowIndex, rowMetrics ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                rowMetrics.forEachIndexed { metricIndex, metric ->
-                    val position = rowIndex * 2 + metricIndex + 1
+                rowMetrics.forEach { metric ->
                     MetricCard(
                         title = metricDisplayName(metric),
                         current = status.latestMetricValue(metric),
                         best = status.bestMetrics[metric],
                         bestEpoch = status.bestEpochs[metric],
-                        selected = selectedMetric == metric,
-                        editing = editingLayout,
-                        position = position,
-                        canMovePrevious = position > 1,
-                        canMoveNext = position < visibleMetrics.size,
                         glassStyle = glassStyle,
-                        onClick = {
-                            if (editingLayout) {
-                                val first = selectedMetric
-                                when {
-                                    first == null -> selectedMetric = metric
-                                    first == metric -> selectedMetric = null
-                                    else -> {
-                                        onMetricSwap(first, metric)
-                                        selectedMetric = null
-                                    }
-                                }
-                            }
-                        },
-                        onMovePrevious = {
-                            selectedMetric = null
-                            onMetricMove(metric, -1)
-                        },
-                        onMoveNext = {
-                            selectedMetric = null
-                            onMetricMove(metric, 1)
-                        },
-                        onMoveFirst = {
-                            selectedMetric = null
-                            onMetricMove(metric, -visibleMetrics.size)
-                        },
-                        onMoveLast = {
-                            selectedMetric = null
-                            onMetricMove(metric, visibleMetrics.size)
-                        },
-                        modifier = if (rowMetrics.size == 1) {
-                            Modifier.fillMaxWidth()
-                        } else {
-                            Modifier.weight(1f)
-                        },
+                        modifier = if (rowMetrics.size == 1) Modifier.fillMaxWidth() else Modifier.weight(1f),
                     )
                 }
             }
@@ -1512,121 +1129,34 @@ private fun MetricCard(
     current: Double?,
     best: Double?,
     bestEpoch: Int?,
-    selected: Boolean,
-    editing: Boolean,
-    position: Int,
-    canMovePrevious: Boolean,
-    canMoveNext: Boolean,
     glassStyle: Boolean,
-    onClick: () -> Unit,
-    onMovePrevious: () -> Unit,
-    onMoveNext: () -> Unit,
-    onMoveFirst: () -> Unit,
-    onMoveLast: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val cardModifier = if (editing) {
-        modifier.clickable(onClick = onClick)
-    } else {
-        modifier
-    }
-    ElevatedCard(
+    Surface(
         shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = when {
-                selected -> Color(0xFFEFF6FF)
-                editing -> if (glassStyle) Color(0xDDFBFDFF) else Color(0xFFFBFDFF)
-                else -> glassPanelColor(glassStyle)
-            },
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (selected) 3.dp else 1.dp),
-        modifier = cardModifier,
+        color = glassPanelColor(glassStyle),
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xCCFFFFFF) else Hairline),
+        modifier = modifier,
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    title,
-                    color = if (selected) Color(0xFF2563EB) else Color(0xFF6B7280),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                if (editing) {
-                    Surface(
-                        color = if (selected) Color(0xFF111827) else Color(0xFFE0E7FF),
-                        contentColor = if (selected) Color.White else Color(0xFF2563EB),
-                        shape = RoundedCornerShape(50),
-                    ) {
-                        Text(
-                            text = "位置 $position",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                }
-            }
+            Text(title, color = MutedInk, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
                 text = formatMetric(current),
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "Best ${formatMetric(best)}${bestEpoch?.let { " @ epoch $it" } ?: ""}",
-                color = Color(0xFF6B7280),
+                text = "最佳 ${formatMetric(best)}${bestEpoch?.let { " · 第 $it 轮" } ?: ""}",
+                color = MutedInk,
+                style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (editing) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(
-                        onClick = onMoveFirst,
-                        enabled = canMovePrevious,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("置顶")
-                    }
-                    TextButton(
-                        onClick = onMovePrevious,
-                        enabled = canMovePrevious,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("前移")
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TextButton(
-                        onClick = onMoveNext,
-                        enabled = canMoveNext,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("后移")
-                    }
-                    TextButton(
-                        onClick = onMoveLast,
-                        enabled = canMoveNext,
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text("置底")
-                    }
-                }
-                Text(
-                    text = if (selected) "已选中，再点另一块交换位置" else "点击两张卡片可以直接交换",
-                    color = Color(0xFF2563EB),
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }
@@ -1638,10 +1168,10 @@ private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>, 
         status.history.count { it.metrics[metric] != null } >= 2
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = glassPanelColor(glassStyle)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (glassStyle) 4.dp else 1.dp),
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = glassPanelColor(glassStyle),
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xCCFFFFFF) else Hairline),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -1654,7 +1184,7 @@ private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>, 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("实时曲线", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                Text("${status.history.size} 条记录", color = Color(0xFF6B7280))
+                Text("${status.history.size} 条记录", color = MutedInk)
             }
 
             if (chartMetric == null) {
@@ -1664,7 +1194,7 @@ private fun MiniChartCard(status: TrainingStatus, visibleMetrics: List<String>, 
                         .height(170.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("训练数据积累后会显示曲线", color = Color(0xFF6B7280))
+                    Text("至少同步 2 个 Epoch 后显示趋势", color = MutedInk)
                 }
             } else {
                 MetricsChart(
@@ -1691,20 +1221,29 @@ private fun ChartsScreen(
     glassStyle: Boolean,
     onGpuSelected: (String) -> Unit,
 ) {
+    val chartMetrics = chooseChartMetrics(status, selectedMetrics).filter { metric ->
+        status.history.count { it.metrics[metric] != null } >= 2
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(18.dp),
+            .padding(horizontal = 18.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text(
-            text = "曲线分析",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-        )
-        Text("曲线只显示你在设置中勾选、并且服务器实际检测到的指标。", color = Color(0xFF6B7280))
-        GpuSelectorCard(
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = "训练趋势",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "${status.history.size} 个历史点 · ${chartMetrics.size} 个可分析指标",
+                color = MutedInk,
+            )
+        }
+        GpuSelectorBar(
             rootStatus = rootStatus,
             selectedGpuId = selectedGpuId,
             gpuOptions = gpuOptions,
@@ -1712,57 +1251,58 @@ private fun ChartsScreen(
             onGpuSelected = onGpuSelected,
         )
 
-        val chartMetrics = chooseChartMetrics(status, selectedMetrics).filter { metric ->
-            status.history.count { it.metrics[metric] != null } >= 2
-        }
-        val selectedAvailable = resolveSelectedMetrics(status, selectedMetrics)
-
         if (chartMetrics.isEmpty()) {
-            ElevatedCard(
-                shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = glassPanelColor(glassStyle)),
-                elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (glassStyle) 4.dp else 1.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp)
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        if (selectedMetrics.isEmpty()) {
-                            "请先到设置中选择要显示的指标"
-                        } else {
-                            "当前选择的指标还没有足够历史数据"
-                        },
-                        color = Color(0xFF6B7280),
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
+            EmptyCard(
+                title = "暂时没有可绘制的趋势",
+                body = if (selectedMetrics.isEmpty()) {
+                    "请到设置中选择指标。"
+                } else {
+                    "所选指标至少同步 2 个 Epoch 后会显示曲线。"
+                },
+                glassStyle = glassStyle,
+            )
         } else {
             chartMetrics.forEach { metric ->
-                ElevatedCard(
-                    shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
-                    colors = CardDefaults.elevatedCardColors(containerColor = glassPanelColor(glassStyle)),
-                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (glassStyle) 4.dp else 1.dp),
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = glassPanelColor(glassStyle),
+                    border = BorderStroke(1.dp, if (glassStyle) Color(0xCCFFFFFF) else Hairline),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        Text(
-                            text = "${metricDisplayName(metric)} Trend",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        if (selectedAvailable.size > 1) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
-                                text = "已选择：${selectedAvailable.joinToString(" / ") { metricDisplayName(it) }}",
-                                color = Color(0xFF6B7280),
+                                text = metricDisplayName(metric),
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = "${status.history.count { it.metrics[metric] != null }} 点",
+                                color = MutedInk,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        ) {
+                            OverviewStat(
+                                label = "当前",
+                                value = formatMetric(status.latestMetricValue(metric)),
+                                modifier = Modifier.weight(1f),
+                            )
+                            OverviewStat(
+                                label = "最佳",
+                                value = formatMetric(status.bestMetrics[metric]),
+                                hint = status.bestEpochs[metric]?.let { "第 $it 轮" },
+                                modifier = Modifier.weight(1f),
                             )
                         }
                         MetricsChart(
@@ -1770,7 +1310,7 @@ private fun ChartsScreen(
                             metrics = listOf(metric),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(280.dp),
+                                .height(220.dp),
                         )
                         ChartLegend(listOf(metric))
                     }
@@ -1910,7 +1450,7 @@ private fun ChartLegend(metrics: List<String>) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = metricDisplayName(metric),
-                            color = Color(0xFF6B7280),
+                            color = MutedInk,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -1933,6 +1473,7 @@ private fun SettingsScreen(
     metricOptions: List<String>,
     selectedMetrics: List<String>,
     notificationEnabled: Boolean,
+    huaweiWatchSyncEnabled: Boolean,
     uiStyle: String,
     testMessage: String,
     onUrlChange: (String) -> Unit,
@@ -1940,6 +1481,7 @@ private fun SettingsScreen(
     onRefreshSecondsChange: (Int) -> Unit,
     onMetricToggle: (String) -> Unit,
     onNotificationEnabledChange: (Boolean) -> Unit,
+    onHuaweiWatchSyncChange: (Boolean) -> Unit,
     onUiStyleChange: (String) -> Unit,
     onClearCachedData: () -> Unit,
     onClearToken: () -> Unit,
@@ -1964,9 +1506,9 @@ private fun SettingsScreen(
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
-        Text("配置服务器连接、刷新频率和显示指标。", color = Color(0xFF6B7280))
+        Text("连接、显示、提醒与本地数据。", color = MutedInk)
 
-        SettingsCard(title = "服务器连接", glassStyle = glassStyle) {
+        SettingsCard(title = "训练服务器", glassStyle = glassStyle) {
             MonitorTextField(
                 value = draftUrl,
                 onValueChange = onUrlChange,
@@ -1976,8 +1518,8 @@ private fun SettingsScreen(
                 glassStyle = glassStyle,
             )
             Text(
-                "支持内网 IP、域名或 HTTPS；不写协议时默认使用 http://。",
-                color = Color(0xFF6B7280),
+                "支持局域网 IP、域名或 HTTPS；不写协议时默认使用 http://。",
+                color = MutedInk,
                 style = MaterialTheme.typography.bodySmall,
             )
             if (normalizeBaseUrl(draftUrl).startsWith("http://")) {
@@ -2001,7 +1543,7 @@ private fun SettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Button(onClick = onSave, modifier = Modifier.weight(1f)) {
-                    Text("保存")
+                    Text("保存并连接")
                 }
                 OutlinedButton(onClick = onTest, modifier = Modifier.weight(1f)) {
                     Text("测试连接")
@@ -2012,30 +1554,42 @@ private fun SettingsScreen(
             }
         }
 
-        SettingsCard(title = "界面风格", glassStyle = glassStyle) {
-            Text("选择你喜欢的界面质感，后续可以继续扩展更多主题。", color = Color(0xFF6B7280))
+        SettingsCard(title = "显示指标", glassStyle = glassStyle) {
+            Text("勾选后会同步用于总览、趋势和通知。", color = MutedInk)
+            if (metricOptions.isEmpty()) {
+                Text("连接训练服务器后，这里会出现检测到的指标。", color = MutedInk)
+            } else {
+                metricOptions.forEach { metric ->
+                    MetricOptionRow(
+                        metric = metric,
+                        checked = selectedMetrics.contains(metric),
+                        onToggle = { onMetricToggle(metric) },
+                    )
+                }
+            }
+        }
+
+        SettingsCard(title = "显示与刷新", glassStyle = glassStyle) {
+            Text("界面风格", color = MutedInk, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricChip(
-                    text = "普通",
+                    text = "简洁",
                     selected = uiStyle != "glass",
                     onClick = { onUiStyleChange("normal") },
                     modifier = Modifier.weight(1f),
                     glassStyle = glassStyle,
                 )
                 MetricChip(
-                    text = "毛玻璃",
+                    text = "柔光",
                     selected = uiStyle == "glass",
                     onClick = { onUiStyleChange("glass") },
                     modifier = Modifier.weight(1f),
                     glassStyle = glassStyle,
                 )
             }
-        }
-
-        SettingsCard(title = "实时刷新", glassStyle = glassStyle) {
-            Text("刷新间隔", color = Color(0xFF6B7280))
+            Text("刷新间隔", color = MutedInk, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(1, 2, 5, 10).forEach { seconds ->
+                listOf(5, 10, 15, 30).forEach { seconds ->
                     MetricChip(
                         text = "${seconds}秒",
                         selected = refreshSeconds == seconds,
@@ -2045,6 +1599,7 @@ private fun SettingsScreen(
                     )
                 }
             }
+            Text("间隔越短，状态更新越及时；后台耗电和服务器请求也会增加。", color = MutedInk, style = MaterialTheme.typography.bodySmall)
         }
 
         SettingsCard(title = "通知提醒", glassStyle = glassStyle) {
@@ -2058,8 +1613,9 @@ private fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("通知栏训练状态", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "开启后会用前台进度通知显示 epoch、Best 指标和 ETA；训练完成时提醒。锁屏、状态栏或系统实时状态展示由不同 Android 厂商的通知策略决定。",
-                        color = Color(0xFF6B7280),
+                        "持续显示 Epoch、最佳指标和 ETA，并在训练完成时提醒。",
+                        color = MutedInk,
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 Checkbox(
@@ -2068,19 +1624,45 @@ private fun SettingsScreen(
                 )
             }
             Text(
-                "通知中显示的指标来自“显示指标”的前 1-2 个；不选择时会自动使用主要指标。",
-                color = Color(0xFF6B7280),
+                "通知优先显示已勾选的前 1-2 个指标。",
+                color = MutedInk,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onHuaweiWatchSyncChange(!huaweiWatchSyncEnabled) },
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("华为手表同步（FIT 4）", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "将通知压缩成适合手表阅读的训练摘要。",
+                        color = MutedInk,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Checkbox(
+                    checked = huaweiWatchSyncEnabled,
+                    onCheckedChange = onHuaweiWatchSyncChange,
+                )
+            }
+            Text(
+                "需要在华为运动健康中允许“模迹”通知同步到 FIT 4。",
+                color = MutedInk,
+                style = MaterialTheme.typography.bodySmall,
             )
         }
 
         SettingsCard(title = "隐私与权限", glassStyle = glassStyle) {
             Text(
                 "仅使用网络访问你配置的训练监控后端；开启通知后会使用通知和前台服务权限，用于通知栏、锁屏训练状态和训练完成提醒。",
-                color = Color(0xFF6B7280),
+                color = MutedInk,
             )
             Text(
                 "本机保存内容包括服务器地址、加密 Token、刷新间隔、勾选指标和最后一次训练状态缓存；不读取通讯录、定位、相册、麦克风或摄像头。",
-                color = Color(0xFF6B7280),
+                color = MutedInk,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(onClick = onClearCachedData, modifier = Modifier.weight(1f)) {
@@ -2104,34 +1686,19 @@ private fun SettingsScreen(
             }
         }
 
-        SettingsCard(title = "显示指标", glassStyle = glassStyle) {
-            Text("这里只显示服务器已经检测到的指标；勾选后会出现在总览、曲线和通知中。", color = Color(0xFF6B7280))
-            if (metricOptions.isEmpty()) {
-                Text("还没有检测到指标。训练脚本同步数据后，这里会自动出现可选项。", color = Color(0xFF6B7280))
-            } else {
-                metricOptions.forEach { metric ->
-                    MetricOptionRow(
-                        metric = metric,
-                        checked = selectedMetrics.contains(metric),
-                        onToggle = { onMetricToggle(metric) },
-                    )
-                }
-            }
-        }
-
         SettingsCard(title = "关于我们", glassStyle = glassStyle) {
-            Text("训迹 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
-            Text("作者：Zephyer", color = Color(0xFF6B7280))
-            Text("应用标识：${context.packageName}", color = Color(0xFF6B7280))
-            Text("项目主页：github.com/ZephYer8/training-monitor", color = Color(0xFF6B7280))
-            Text("反馈渠道：GitHub Issues 或应用市场反馈入口", color = Color(0xFF6B7280))
+            Text("模迹 ${appVersionText(context)}", fontWeight = FontWeight.SemiBold)
+            Text("作者：Zephyer", color = MutedInk)
+            Text("应用标识：${context.packageName}", color = MutedInk)
+            Text("项目主页：github.com/ZephYer8/training-monitor", color = MutedInk)
+            Text("反馈渠道：GitHub Issues 或应用市场反馈入口", color = MutedInk)
             Text(
                 "本应用只连接你配置的训练监控后端，Token 加密保存在本机，不采集通讯录、定位、相册等个人信息。",
-                color = Color(0xFF6B7280),
+                color = MutedInk,
             )
             Text(
                 "隐私与权限说明可在本页上方查看；正式分发时请以应用市场展示的隐私政策链接为准。",
-                color = Color(0xFF6B7280),
+                color = MutedInk,
             )
         }
     }
@@ -2152,7 +1719,7 @@ private fun PrivacyConsentDialog(
         title = { Text("隐私与权限提示") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("欢迎使用训迹。继续使用前，请先了解本应用如何处理数据。")
+                Text("欢迎使用模迹。继续使用前，请先了解本应用如何处理数据。")
                 Text("本应用只连接你配置的训练监控后端，用于显示训练进度、指标曲线、Best 指标、ETA 和训练完成提醒。")
                 Text("本机保存服务器地址、加密 Token、刷新间隔、勾选指标和最后一次训练状态缓存。")
                 Text("应用仅使用网络、通知和前台服务权限；不读取通讯录、定位、相册、麦克风或摄像头，不接入广告 SDK。")
@@ -2186,7 +1753,7 @@ private fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("应用名称：训迹", fontWeight = FontWeight.SemiBold)
+                Text("应用名称：模迹", fontWeight = FontWeight.SemiBold)
                 Text("作者：Zephyer")
                 Text("包名：com.modeltest.monitor")
                 Text("项目主页：github.com/ZephYer8/training-monitor")
@@ -2229,14 +1796,14 @@ private fun MonitorTextField(
         visualTransformation = visualTransformation,
         keyboardOptions = keyboardOptions,
         singleLine = true,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedContainerColor = glassFieldColor(glassStyle),
             unfocusedContainerColor = glassFieldColor(glassStyle),
-            focusedBorderColor = Color(0xFF2563EB),
-            unfocusedBorderColor = if (glassStyle) Color(0x99FFFFFF) else Color(0xFFD1D5DB),
-            focusedLabelColor = Color(0xFF2563EB),
-            cursorColor = Color(0xFF2563EB),
+            focusedBorderColor = BrandBlue,
+            unfocusedBorderColor = if (glassStyle) Color(0x99FFFFFF) else Color(0xFFD0D5DD),
+            focusedLabelColor = BrandBlue,
+            cursorColor = BrandBlue,
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -2249,10 +1816,10 @@ private fun MonitorTextField(
 private fun ConnectionMessage(message: String, glassStyle: Boolean) {
     val isError = message.startsWith("连接失败")
     Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = if (isError) Color(0xFFFFF1F2) else if (glassStyle) Color(0x96FFFFFF) else Color(0xFFF8FAFC),
-        border = BorderStroke(1.dp, if (isError) Color(0xFFFECACA) else if (glassStyle) Color(0xC6FFFFFF) else Color(0xFFE5E7EB)),
-        modifier = Modifier.glassMaterial(glassStyle, 14.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isError) Color(0xFFFEF3F2) else if (glassStyle) Color(0xB8FFFFFF) else Color(0xFFF9FAFB),
+        border = BorderStroke(1.dp, if (isError) Color(0xFFFDA29B) else if (glassStyle) Color(0xC6FFFFFF) else Hairline),
+        modifier = Modifier.glassMaterial(glassStyle, 10.dp),
     ) {
         Text(
             message,
@@ -2266,16 +1833,16 @@ private fun ConnectionMessage(message: String, glassStyle: Boolean) {
 @Composable
 private fun SettingsCard(title: String, glassStyle: Boolean, content: @Composable ColumnScope.() -> Unit) {
     Surface(
-        shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
+        shape = RoundedCornerShape(12.dp),
         color = glassPanelColor(glassStyle),
-        border = glassPanelBorder(glassStyle),
-        shadowElevation = if (glassStyle) 12.dp else 1.dp,
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xCCFFFFFF) else Hairline),
+        shadowElevation = if (glassStyle) 3.dp else 0.dp,
         modifier = Modifier
             .fillMaxWidth()
-            .glassMaterial(glassStyle, if (glassStyle) 24.dp else 10.dp),
+            .glassMaterial(glassStyle, 12.dp),
     ) {
         Column(
-            modifier = Modifier.padding(if (glassStyle) 18.dp else 16.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
@@ -2295,22 +1862,21 @@ private fun MetricChip(
 ) {
     Surface(
         color = when {
-            selected && glassStyle -> Color(0xDDEFF6FF)
-            selected -> Color(0xFFEFF6FF)
-            glassStyle -> Color(0x8CFFFFFF)
-            else -> Color.White
+            selected -> SoftBlue
+            glassStyle -> Color(0xB8FFFFFF)
+            else -> Color.Transparent
         },
-        contentColor = if (selected) Color(0xFF2563EB) else Color(0xFF374151),
-        shape = RoundedCornerShape(50),
+        contentColor = if (selected) BrandBlue else Color(0xFF344054),
+        shape = RoundedCornerShape(9.dp),
         modifier = modifier
             .clickable(onClick = onClick)
-            .glassMaterial(glassStyle, 50.dp),
+            .glassMaterial(glassStyle, 9.dp),
         border = BorderStroke(
             width = 1.dp,
             color = when {
-                selected -> Color(0xFF2563EB)
+                selected -> Color(0xFF84ADFF)
                 glassStyle -> Color(0xCCFFFFFF)
-                else -> Color(0xFFE5E7EB)
+                else -> Hairline
             },
         ),
     ) {
@@ -2345,10 +1911,10 @@ private fun MetricOptionRow(metric: String, checked: Boolean, onToggle: () -> Un
 @Composable
 private fun StatusPill(status: String) {
     val color = when (status) {
-        "training" -> Color(0xFF2563EB)
-        "finished" -> Color(0xFF16A34A)
-        "error" -> Color(0xFFDC2626)
-        else -> Color(0xFF6B7280)
+        "training" -> BrandBlue
+        "finished" -> BrandGreen
+        "error" -> Color(0xFFD92D20)
+        else -> MutedInk
     }
 
     Surface(
@@ -2371,20 +1937,20 @@ private fun StatusPill(status: String) {
 
 @Composable
 private fun EmptyCard(title: String, body: String, glassStyle: Boolean) {
-    ElevatedCard(
-        shape = RoundedCornerShape(if (glassStyle) 24.dp else 10.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = glassPanelColor(glassStyle)),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = if (glassStyle) 4.dp else 1.dp),
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = glassPanelColor(glassStyle),
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xCCFFFFFF) else Hairline),
         modifier = Modifier
             .fillMaxWidth()
-            .glassMaterial(glassStyle, if (glassStyle) 24.dp else 10.dp),
+            .glassMaterial(glassStyle, 12.dp),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(title, fontWeight = FontWeight.Bold)
-            Text(body, color = Color(0xFF6B7280))
+            Text(body, color = MutedInk)
         }
     }
 }
@@ -2393,10 +1959,10 @@ private fun EmptyCard(title: String, body: String, glassStyle: Boolean) {
 @Composable
 private fun BottomTabs(current: AppPage, glassStyle: Boolean, onChange: (AppPage) -> Unit) {
     Surface(
-        color = if (glassStyle) Color(0xB8FFFFFF) else Color.White,
-        border = if (glassStyle) BorderStroke(1.dp, Color(0xE6FFFFFF)) else null,
-        shadowElevation = if (glassStyle) 14.dp else 4.dp,
-        modifier = Modifier.glassMaterial(glassStyle, 24.dp),
+        color = if (glassStyle) Color(0xE8FFFFFF) else Color.White,
+        border = BorderStroke(1.dp, if (glassStyle) Color(0xE6FFFFFF) else Hairline),
+        shadowElevation = 4.dp,
+        modifier = Modifier.glassMaterial(glassStyle, 12.dp),
     ) {
         Row(
             modifier = Modifier
@@ -2423,7 +1989,7 @@ private fun BottomTabs(current: AppPage, glassStyle: Boolean, onChange: (AppPage
 private suspend fun fetchStatusJson(client: OkHttpClient, baseUrl: String, token: String): String {
     return withContext(Dispatchers.IO) {
         val requestBuilder = Request.Builder()
-            .url("${baseUrl.trim().trimEnd('/')}/api/status")
+            .url("${baseUrl.trim().trimEnd('/')}/api/status?history_limit=120")
             .get()
 
         if (token.isNotBlank()) {
@@ -2651,60 +2217,6 @@ private fun parseMetricList(text: String): List<String> {
 }
 
 
-private fun metricOrderForEdit(
-    status: TrainingStatus,
-    selected: List<String>,
-    visibleMetrics: List<String>,
-): MutableList<String> {
-    val available = status.metricNames()
-    return if (selected.isNotEmpty()) {
-        selected.map { canonicalMetric(it, available) ?: it }.toMutableList()
-    } else {
-        visibleMetrics.toMutableList()
-    }
-}
-
-
-private fun swapMetricOrder(
-    status: TrainingStatus,
-    selected: List<String>,
-    visibleMetrics: List<String>,
-    first: String,
-    second: String,
-): String {
-    val next = metricOrderForEdit(status, selected, visibleMetrics)
-    if (first !in next) next.add(first)
-    if (second !in next) next.add(second)
-    val firstIndex = next.indexOf(first)
-    val secondIndex = next.indexOf(second)
-    if (firstIndex >= 0 && secondIndex >= 0) {
-        val temp = next[firstIndex]
-        next[firstIndex] = next[secondIndex]
-        next[secondIndex] = temp
-    }
-    return next.filter { it.isNotBlank() }.distinct().joinToString(",")
-}
-
-
-private fun moveMetricOrder(
-    status: TrainingStatus,
-    selected: List<String>,
-    visibleMetrics: List<String>,
-    metric: String,
-    delta: Int,
-): String {
-    val next = metricOrderForEdit(status, selected, visibleMetrics)
-    if (metric !in next) next.add(metric)
-    val from = next.indexOf(metric)
-    val to = (from + delta).coerceIn(0, next.lastIndex)
-    if (from >= 0 && from != to) {
-        next.removeAt(from)
-        next.add(to, metric)
-    }
-    return next.filter { it.isNotBlank() }.distinct().joinToString(",")
-}
-
-
 private fun toggleMetric(selected: List<String>, metric: String): String {
     val next = selected.toMutableList()
     if (metric in next) {
@@ -2906,6 +2418,7 @@ private fun loadCachedStatus(context: Context): TrainingStatus? {
 
 
 private fun saveCachedStatus(context: Context, raw: String) {
+    if (raw.toByteArray(Charsets.UTF_8).size > 750_000) return
     settingsPreferences(context)
         .edit()
         .putString("cached_status_json", raw)
@@ -2923,8 +2436,8 @@ private fun clearCachedStatus(context: Context) {
 
 private fun loadRefreshSeconds(context: Context): Int {
     return settingsPreferences(context)
-        .getInt("refresh_seconds", 2)
-        .coerceIn(1, 60)
+        .getInt("refresh_seconds", 5)
+        .coerceIn(5, 60)
 }
 
 
@@ -2980,6 +2493,19 @@ private fun saveNotificationEnabled(context: Context, enabled: Boolean) {
 }
 
 
+private fun loadHuaweiWatchSyncEnabled(context: Context): Boolean {
+    return settingsPreferences(context).getBoolean(HuaweiWatchSyncEnabledKey, false)
+}
+
+
+private fun saveHuaweiWatchSyncEnabled(context: Context, enabled: Boolean) {
+    settingsPreferences(context)
+        .edit()
+        .putBoolean(HuaweiWatchSyncEnabledKey, enabled)
+        .apply()
+}
+
+
 private fun loadPrivacyAccepted(context: Context): Boolean {
     return settingsPreferences(context).getBoolean(PrivacyAcceptedKey, false)
 }
@@ -3023,11 +2549,7 @@ private fun startTrainingNotificationService(context: Context) {
     val cached = loadCachedStatus(context) ?: return
     if (!shouldShowTrainingNotification(cached)) return
     val intent = Intent(context, TrainingNotificationService::class.java)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(intent)
-    } else {
-        context.startService(intent)
-    }
+    context.startForegroundService(intent)
 }
 
 
@@ -3107,7 +2629,6 @@ private fun hasNotificationPermission(context: Context): Boolean {
 
 
 private fun createNotificationChannels(context: Context) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     notificationManager(context).createNotificationChannel(
         NotificationChannel(
             TrainingChannelId,
@@ -3138,12 +2659,22 @@ private fun buildTrainingNotification(
     contentOverride: String? = null,
 ): Notification {
     val progressPercent = notificationProgressPercent(status)
-    val compactText = contentOverride ?: notificationCompactText(context, status)
+    val watchSyncEnabled = loadHuaweiWatchSyncEnabled(context)
+    val title = if (watchSyncEnabled) {
+        watchNotificationTitle(status)
+    } else {
+        notificationShortTitle(status)
+    }
+    val compactText = contentOverride ?: if (watchSyncEnabled) {
+        watchNotificationText(context, status)
+    } else {
+        notificationCompactText(context, status)
+    }
     val expandedText = contentOverride ?: notificationExpandedText(context, status)
     val notification = Notification.Builder(context, TrainingChannelId)
         .setSmallIcon(R.drawable.ic_notification)
         .setColor(0xFF2563EB.toInt())
-        .setContentTitle(notificationShortTitle(status))
+        .setContentTitle(title)
         .setContentText(compactText)
         .setStyle(Notification.BigTextStyle().bigText(expandedText))
         .setContentIntent(mainActivityPendingIntent(context))
@@ -3155,7 +2686,10 @@ private fun buildTrainingNotification(
         .setWhen(System.currentTimeMillis())
         .setPriority(Notification.PRIORITY_HIGH)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
-        .setCategory(Notification.CATEGORY_PROGRESS)
+        .setCategory(Notification.CATEGORY_STATUS)
+        .setTicker(compactText)
+        .setLocalOnly(false)
+        .setPublicVersion(buildPublicTrainingNotification(context, TrainingChannelId, title, compactText))
 
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         notification.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
@@ -3172,16 +2706,49 @@ private fun buildTrainingNotification(
 
 
 private fun buildFinishedNotification(context: Context, status: TrainingStatus): Notification {
-    val content = notificationCompactText(context, status)
+    val watchSyncEnabled = loadHuaweiWatchSyncEnabled(context)
+    val title = if (watchSyncEnabled) {
+        watchNotificationTitle(status)
+    } else {
+        notificationShortTitle(status)
+    }
+    val content = if (watchSyncEnabled) {
+        watchNotificationText(context, status)
+    } else {
+        notificationCompactText(context, status)
+    }
     val expandedText = notificationExpandedText(context, status)
     return Notification.Builder(context, TrainingFinishedChannelId)
         .setSmallIcon(R.drawable.ic_notification)
         .setColor(0xFF16A34A.toInt())
-        .setContentTitle(notificationShortTitle(status))
+        .setContentTitle(title)
         .setContentText(content)
         .setStyle(Notification.BigTextStyle().bigText(expandedText))
         .setContentIntent(mainActivityPendingIntent(context))
         .setAutoCancel(true)
+        .setShowWhen(true)
+        .setWhen(System.currentTimeMillis())
+        .setPriority(Notification.PRIORITY_HIGH)
+        .setVisibility(Notification.VISIBILITY_PUBLIC)
+        .setCategory(Notification.CATEGORY_STATUS)
+        .setTicker(content)
+        .setLocalOnly(false)
+        .setPublicVersion(buildPublicTrainingNotification(context, TrainingFinishedChannelId, title, content))
+        .build()
+}
+
+
+private fun buildPublicTrainingNotification(
+    context: Context,
+    channelId: String,
+    title: String,
+    text: String,
+): Notification {
+    return Notification.Builder(context, channelId)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setColor(0xFF2563EB.toInt())
+        .setContentTitle(title)
+        .setContentText(text)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
         .setCategory(Notification.CATEGORY_STATUS)
         .build()
@@ -3246,6 +2813,54 @@ private fun notificationCompactText(context: Context, status: TrainingStatus): S
 }
 
 
+private fun watchNotificationTitle(status: TrainingStatus): String {
+    val progressText = notificationProgressPercent(status)?.let { " $it%" } ?: ""
+    return when (status.status) {
+        "training" -> "模迹 训练中$progressText"
+        "finished" -> "模迹 训练完成$progressText"
+        "error" -> "模迹 训练异常"
+        else -> "模迹 等待数据"
+    }
+}
+
+
+private fun watchNotificationText(context: Context, status: TrainingStatus): String {
+    val metrics = notificationMetrics(context, status)
+    val primaryMetric = metrics.firstOrNull()
+    val currentText = primaryMetric
+        ?.let { metric -> status.latestMetricValue(metric)?.let { "${shortMetricName(metric)} ${formatMetric(it)}" } }
+    val bestText = primaryMetric
+        ?.let { metric ->
+            status.bestMetrics[metric]?.let { best ->
+                val epoch = status.bestEpochs[metric]?.let { "@$it" } ?: ""
+                "Best ${formatMetric(best)}$epoch"
+            }
+        }
+    val epochText = if (status.totalEpochs > 0) {
+        "E${status.epoch}/${status.totalEpochs}"
+    } else {
+        status.epoch.takeIf { it > 0 }?.let { "E$it" }
+    }
+    val etaText = status.etaSeconds?.let { "ETA ${formatEta(it)}" }
+    return listOfNotNull(epochText, currentText, bestText, etaText)
+        .distinct()
+        .joinToString(" · ")
+        .ifBlank { notificationCompactText(context, status) }
+}
+
+
+private fun shortMetricName(metric: String): String {
+    return when (metricDisplayName(metric)) {
+        "BBox mAP" -> "bbox"
+        "Segm mAP" -> "segm"
+        "Accuracy" -> "acc"
+        "Top1 Acc" -> "top1"
+        "Top5 Acc" -> "top5"
+        else -> metricDisplayName(metric)
+    }
+}
+
+
 private fun notificationExpandedText(context: Context, status: TrainingStatus): String {
     val metrics = notificationMetrics(context, status)
     val metricLines = metrics.mapNotNull { metric ->
@@ -3278,12 +2893,21 @@ private fun notificationExpandedText(context: Context, status: TrainingStatus): 
 
 
 private fun notificationRetryText(context: Context, status: TrainingStatus): String {
-    return "连接中断，后台重试 · ${notificationCompactText(context, status)}"
+    return "连接中断 · ${wearableStatusText(context, status)}"
 }
 
 
 private fun notificationRecoveringText(context: Context, status: TrainingStatus): String {
-    return "等待训练状态恢复 · ${notificationCompactText(context, status)}"
+    return "等待恢复 · ${wearableStatusText(context, status)}"
+}
+
+
+private fun wearableStatusText(context: Context, status: TrainingStatus): String {
+    return if (loadHuaweiWatchSyncEnabled(context)) {
+        watchNotificationText(context, status)
+    } else {
+        notificationCompactText(context, status)
+    }
 }
 
 

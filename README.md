@@ -2,10 +2,10 @@
 
 作者：Zephyer
 
-Training Monitor 是一个轻量级深度学习训练监控工具。它由两部分组成：
+模迹（Training Monitor）是一个轻量级深度学习训练监控工具。它由两部分组成：
 
 - 服务器端监控服务：运行在训练服务器上，读取训练日志或接收训练脚本上报。
-- 安卓 App：安装到手机上，实时查看训练进度、当前指标、最好指标、最好轮次和预计剩余时间。
+- 安卓 App“模迹”：安装到手机上，实时查看训练进度、当前指标、最好指标、最好轮次和预计剩余时间。
 
 当前版本适合这些场景：
 
@@ -106,7 +106,7 @@ access token: xxxxxxxxxxxxxxxxxxxxxxxx
 - `Backend URL`：服务器输出的 `backend url`
 - `Access Token`：服务器输出的 `access token`
 
-点 `Save` 后，App 会每 2 秒自动刷新训练状态。
+点 `Save` 后，App 默认每 5 秒自动刷新训练状态，可在设置里改为 5、10、15 或 30 秒。
 
 不要把 `access token` 发给别人。如果怀疑泄露，在服务器上执行：
 
@@ -292,24 +292,20 @@ cd android
 - `Backend URL`：例如 `http://region-xx.example.com:12345`
 - `Access Token`：服务器 `training-monitor connection` 输出的 token
 
-填写后点击 `Save`。
+填写后点击“保存并连接”。
 
 App 会显示：
 
-- 当前训练状态
-- 当前 epoch / 总 epoch
-- `Best mIoU` / `Best mAP` / `Best Accuracy`
-- `Best Epoch`
-- `Current` 当前指标
-- ETA 预计剩余时间
-- 指标曲线，带横坐标 epoch 和纵坐标数值
+- 总览：首页集中显示任务、状态、当前 epoch、进度、ETA、当前与最佳指标。
+- 多 GPU 筛选：横向切换全部任务或单张 GPU。
+- 训练趋势：按指标显示当前值、最佳值、最佳轮次和历史曲线。
+- 显示指标：在设置中统一决定总览、趋势和通知显示哪些指标。
 - 通知栏和锁屏训练状态，可显示 epoch、Best 指标和 ETA
 - 训练完成提醒
-- 训练控制台仪表盘：训练中、完成、异常、等待会显示不同状态
 
 指标名称在 App 中优先使用英文，例如 `Loss`、`Decode Loss`、`mIoU`、`mDice`、`mAP`、`Accuracy`，这样更接近训练面板和论文实验记录的习惯。
 
-### 5.3 通知栏、锁屏和手表提醒
+### 5.3 通知栏、锁屏和华为 FIT 4 手表同步
 
 在 App 的 `设置` 页面开启 `通知栏训练状态`。
 
@@ -320,13 +316,39 @@ App 会显示：
 - 训练完成时会发送一次完成提醒。
 - 通知里最多显示 1-2 个指标，来源是 `显示指标` 中勾选的前两个。
 
-智能手表目前先通过“同步手机通知”的方式联动：在手机或手表管理 App 里允许“训迹”的通知同步到手表即可。这样不需要单独安装手表 App，也最稳定。
+如果你使用华为 WATCH FIT 4，可以继续开启 `华为手表同步（FIT 4）`。App 会把训练状态通知优化成适合手表小屏显示的摘要，包含：
 
-如果后续要做原生手表 App 或表盘组件，需要按具体手表平台单独开发并接入对应开发者工具链。
+- 训练状态和进度百分比
+- 当前 epoch / 总 epoch
+- 当前主要指标
+- Best 指标和对应 epoch
+- ETA 预计剩余时间
+
+FIT 4 通过华为运动健康同步手机通知显示训练状态，不需要在手表上单独安装 App。请在手机上确认：
+
+- Android 系统通知权限已允许“模迹”。
+- 华为运动健康中已允许“模迹”的通知同步到手表。
+- FIT 4 的消息通知、勿扰模式和蓝牙连接状态正常。
+
+如果手表没有显示，请先看手机通知栏是否有“模迹”的训练状态通知。手机端通知能正常显示后，再到华为运动健康里检查应用通知同步开关。
+
+如果你希望在手表上随时打开一个独立页面查看训练状态，而不是只看通知，本仓库已经开始准备原生 FIT 4 companion：
+
+```text
+watch-fit4/
+```
+
+这个目录包含：
+
+- 手机到手表的训练状态 JSON 协议。
+- Android 手机侧 `WatchStatusPayload` 数据打包帮助类。
+- FIT 4 Lite Wearable 页面骨架，可在 DevEco Studio 中继续接入 Wear Engine。
+
+原生手表页面需要华为开发者账号、DevEco Studio、Wear Engine SDK、手表真机调试和签名配置；普通 Android APK 不能直接安装到 FIT 4 作为手表应用。
 
 ## 6. 离线缓存和历史数据
 
-App 每次成功请求 `/api/status` 后，都会把完整状态缓存在手机本地。
+App 每次成功请求 `/api/status?history_limit=120` 后，都会把最近状态缓存在手机本地。为避免训练任务过多时拖慢启动，单次缓存超过 750 KB 会跳过写入，但当前页面仍会正常更新。
 
 这意味着：
 
@@ -490,6 +512,8 @@ def report(epoch, total_epochs, value, metric_name="IoU", eta_seconds=None):
     ).raise_for_status()
 ```
 
+自动日志 watcher 在首次同步历史数据时会使用 `POST /api/status/snapshot` 批量提交，避免逐条请求反复读写完整状态。自定义工具也可以发送 `{"updates": [ ... ]}`，单次最多 500 条；普通训练循环继续使用 `POST /api/status` 即可。
+
 训练循环里调用：
 
 ```python
@@ -607,7 +631,7 @@ training-monitor connection
 
 当前安全边界：
 
-- `/api/status` 和 `/api/reset` 必须带正确 `X-Monitor-Token`。
+- `/api/status`、`/api/status/snapshot` 和 `/api/reset` 必须带正确 `X-Monitor-Token`。
 - token、配置文件、状态文件默认按当前用户私有权限保存。
 - App 使用 Android Keystore 加密保存 token，并关闭系统备份。
 - App 设置页提供“隐私与权限”说明，并支持清除训练缓存、清除本机 Token。
@@ -677,7 +701,7 @@ rm -f ~/bin/training-monitor
 - 正式签名：在 GitHub Secrets 配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，重新打包后得到正式 release APK。未配置这些密钥时，GitHub Release 会生成测试 APK，并同时上传 `training-monitor-build-info.txt` 标明 `market_ready=false`，不要用于应用市场提交。
 - 隐私政策 URL：应用市场通常要求填写可公开访问的隐私政策链接，且 App 内应能方便访问隐私与权限说明。
 - App 备案：如果公开向中国大陆用户分发，按应用市场和接入服务商要求完成 APP 备案或相关主体信息提交。
-- 主体资料：准备开发者姓名或主体名称、联系方式、应用名称“训迹”、作者“Zephyer”、包名 `com.modeltest.monitor`。
+- 主体资料：准备开发者姓名或主体名称、联系方式、应用名称“模迹”、作者“Zephyer”、包名 `com.modeltest.monitor`。
 - 权限说明：首次使用时 App 会展示隐私与权限提示；说明只使用网络、通知、前台服务权限；不读取通讯录、定位、相册、麦克风、摄像头。
 - 数据说明：说明本机保存服务器地址、加密 Token、刷新间隔、勾选指标和最后一次训练状态缓存。
 - 用户权利入口：App 设置页已提供清除训练缓存、清除本机 Token；如果后续增加账号体系，再补注销账号入口。
@@ -693,7 +717,7 @@ rm -f ~/bin/training-monitor
 
 正式上架前，把下面内容整理成一个可公开访问的网页，并把网页链接填写到应用市场后台。
 
-- 应用名称：训迹
+- 应用名称：模迹
 - 作者：Zephyer
 - 包名：`com.modeltest.monitor`
 - 功能用途：连接用户自行配置的训练监控后端，展示模型训练进度、指标曲线、最佳指标、预计剩余时间和训练完成提醒。

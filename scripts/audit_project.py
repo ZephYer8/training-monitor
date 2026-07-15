@@ -97,8 +97,7 @@ def audit_gradle() -> None:
     required = {
         'applicationId = "com.modeltest.monitor"': "stable application id",
         "targetSdk = 35": "targetSdk 35",
-        'manifestPlaceholders["usesCleartextTraffic"] = "false"': "release disables cleartext",
-        'manifestPlaceholders["usesCleartextTraffic"] = "true"': "debug permits local cleartext",
+        'manifestPlaceholders["usesCleartextTraffic"] = "true"': "local-network cleartext is explicitly configured",
     }
     for needle, label in required.items():
         if needle not in gradle:
@@ -151,15 +150,15 @@ def audit_versions() -> None:
 
 def audit_branding_and_copy() -> None:
     strings = text("android/app/src/main/res/values/strings.xml")
-    if "<string name=\"app_name\">训迹</string>" not in strings:
-        fail("app name must stay as 训迹")
+    if "<string name=\"app_name\">模迹</string>" not in strings:
+        fail("app name must stay as 模迹")
 
     checked_files = {
         "android/app/src/main/java/com/modeltest/monitor/MainActivity.kt": text("android/app/src/main/java/com/modeltest/monitor/MainActivity.kt"),
         "README.md": text("README.md"),
         "ui-preview/index.html": text("ui-preview/index.html"),
     }
-    forbidden_terms = ("荣耀", "华为", "灵动", "胶囊", "Honor", "Huawei", "HarmonyOS")
+    forbidden_terms = ("荣耀", "灵动", "胶囊", "Honor", "HarmonyOS")
     for path, content in checked_files.items():
         for term in forbidden_terms:
             if term in content:
@@ -187,7 +186,7 @@ def audit_icon_assets() -> None:
         ET.parse(icon_path)
 
     foreground = foreground_path.read_text(encoding="utf-8")
-    for color in ("#0F172A", "#2563EB", "#22C55E"):
+    for color in ("#FFFFFF", "#155EEF", "#12B76A"):
         if color not in foreground:
             fail(f"launcher foreground should include dashboard brand color {color}")
 
@@ -205,16 +204,19 @@ def audit_server_security() -> None:
         "MAX_METRICS_PER_UPDATE = 64",
         "MAX_METRIC_NAME_LENGTH = 64",
         "MAX_RUN_ID_LENGTH = 128",
+        "MAX_HISTORY_POINTS = 500",
+        "MAX_SNAPSHOT_UPDATES = 500",
         "def parse_cors_origins",
         'origin != "*"',
         "def clean_metric_name",
         "def finite_float",
         "math.isfinite",
-        "safe_list(state.get(\"history\"))[-500:]",
+        "safe_list(snapshot.get(\"history\"))[-history_limit:]",
         ".replace(DATA_FILE)",
         "too many metrics in one update",
         '@app.get("/api/status", dependencies=[Depends(require_token)])',
         '@app.post("/api/status", dependencies=[Depends(require_token)])',
+        '@app.post("/api/status/snapshot", dependencies=[Depends(require_token)])',
         '@app.post("/api/reset", dependencies=[Depends(require_token)])',
     ]
     for needle in required:

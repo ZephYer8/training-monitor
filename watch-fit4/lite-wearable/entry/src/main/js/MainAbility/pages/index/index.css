@@ -1,0 +1,120 @@
+.page {
+  width: 466px;
+  height: 466px;
+  padding: 34px 34px 28px;
+  background-color: #050b18;
+  flex-direction: column;
+}
+
+.top {
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.brand {
+  color: #e5f0ff;
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.status {
+  padding: 8px 14px;
+  border-radius: 18px;
+  color: #ffffff;
+  font-size: 22px;
+}
+
+.training {
+  background-color: #2563eb;
+}
+
+.finished {
+  background-color: #16a34a;
+}
+
+.error {
+  background-color: #dc2626;
+}
+
+.idle {
+  background-color: #475569;
+}
+
+.progress-wrap {
+  margin-top: 32px;
+  width: 100%;
+  flex-direction: column;
+}
+
+.progress-text {
+  color: #ffffff;
+  font-size: 50px;
+  font-weight: 800;
+}
+
+.progress-track {
+  margin-top: 16px;
+  width: 100%;
+  height: 18px;
+  border-radius: 9px;
+  background-color: #1e293b;
+}
+
+.progress-bar {
+  height: 18px;
+  border-radius: 9px;
+  background-color: #38bdf8;
+}
+
+.summary {
+  margin-top: 24px;
+  color: #cbd5e1;
+  font-size: 25px;
+  max-lines: 2;
+  text-overflow: ellipsis;
+}
+
+.metrics {
+  margin-top: 28px;
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.metric {
+  width: 190px;
+  padding: 16px;
+  border-radius: 18px;
+  background-color: #0f172a;
+  flex-direction: column;
+}
+
+.metric-label {
+  color: #94a3b8;
+  font-size: 20px;
+}
+
+.metric-value {
+  margin-top: 6px;
+  color: #ffffff;
+  font-size: 28px;
+  font-weight: 700;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}
+
+.footer {
+  margin-top: 24px;
+  width: 100%;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+.footer-text {
+  color: #94a3b8;
+  font-size: 20px;
+  max-lines: 1;
+  text-overflow: ellipsis;
+}

@@ -3,21 +3,21 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>训迹 UI 预览</title>
+  <title>模迹 UI 预览</title>
   <style>
     :root {
-      --bg: #f5f7fb;
+      --bg: #f7f9fc;
       --panel: #ffffff;
-      --ink: #101827;
+      --ink: #101828;
       --muted: #667085;
-      --line: #e5eaf2;
-      --blue: #2f6eea;
-      --blue-soft: #eaf2ff;
-      --green: #31a455;
-      --amber: #f5a524;
-      --dark: #111827;
-      --shadow: 0 12px 30px rgba(15, 23, 42, .08);
-      --radius: 18px;
+      --line: #e4e7ec;
+      --blue: #155eef;
+      --blue-soft: #eff4ff;
+      --green: #12b76a;
+      --amber: #f79009;
+      --dark: #101828;
+      --shadow: 0 8px 20px rgba(16, 24, 40, .07);
+      --radius: 12px;
       font-family: Inter, "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
     }
 
@@ -26,9 +26,7 @@
       margin: 0;
       min-height: 100vh;
       color: var(--ink);
-      background:
-        radial-gradient(circle at 12% 0%, rgba(47, 110, 234, .12), transparent 28%),
-        linear-gradient(180deg, #fbfcff 0%, var(--bg) 36%, #eef2f8 100%);
+      background: var(--bg);
     }
 
     .stage {
@@ -57,44 +55,12 @@
     .app-icon {
       width: 62px;
       height: 62px;
-      border-radius: 20px;
-      background: linear-gradient(135deg, #0f172a 0%, #2563eb 52%, #22c55e 100%);
-      box-shadow: 0 16px 32px rgba(37, 99, 235, .25);
+      border-radius: 18px;
+      background: var(--blue);
+      box-shadow: 0 12px 24px rgba(21, 94, 239, .24);
       display: grid;
       place-items: center;
       overflow: hidden;
-    }
-
-    .icon-card {
-      width: 41px;
-      height: 36px;
-      border-radius: 9px;
-      background: rgba(255, 255, 255, .94);
-      position: relative;
-    }
-
-    .icon-card::before {
-      content: "";
-      position: absolute;
-      left: 7px;
-      right: 7px;
-      top: 10px;
-      height: 16px;
-      border-left: 2px solid #cbd5e1;
-      border-bottom: 2px solid #cbd5e1;
-    }
-
-    .icon-card::after {
-      content: "";
-      position: absolute;
-      left: 9px;
-      top: 17px;
-      width: 26px;
-      height: 13px;
-      border-radius: 999px;
-      border-top: 4px solid #2563eb;
-      border-right: 4px solid #22c55e;
-      transform: rotate(-18deg);
     }
 
     h1 {
@@ -113,7 +79,7 @@
     .design-card {
       background: rgba(255, 255, 255, .78);
       border: 1px solid rgba(229, 234, 242, .9);
-      border-radius: 18px;
+      border-radius: 12px;
       padding: 18px;
       box-shadow: var(--shadow);
       backdrop-filter: blur(14px);
@@ -145,10 +111,10 @@
       min-height: 880px;
       margin: 0 auto;
       padding: 18px 16px 22px;
-      border-radius: 34px;
+      border-radius: 28px;
       background: #f7f9fd;
       border: 1px solid #d9e0ea;
-      box-shadow: 0 26px 70px rgba(15, 23, 42, .22);
+      box-shadow: 0 24px 60px rgba(16, 24, 40, .18);
       position: relative;
       overflow: hidden;
     }
@@ -174,10 +140,54 @@
     }
 
     .sync {
-      margin-top: 10px;
       color: var(--muted);
       font-size: 14px;
       font-weight: 650;
+    }
+
+    .run-name {
+      margin-top: 7px;
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .sync-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+    }
+
+    .refresh {
+      border: 0;
+      color: var(--blue);
+      background: transparent;
+      padding: 6px 0 6px 12px;
+      font-weight: 800;
+    }
+
+    .gpu-tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      margin: -4px 0 14px;
+      scrollbar-width: none;
+    }
+
+    .gpu-tabs button {
+      flex: 0 0 auto;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: #344054;
+      padding: 8px 12px;
+      font-weight: 750;
+    }
+
+    .gpu-tabs button.active {
+      color: var(--blue);
+      border-color: var(--blue);
+      background: var(--blue-soft);
     }
 
     .status-pill {
@@ -206,7 +216,44 @@
     }
 
     .progress-card {
-      padding: 20px;
+      padding: 18px;
+    }
+
+    .setup-card {
+      display: none;
+      padding: 22px 18px;
+    }
+
+    .setup-card h3 {
+      margin: 0 0 8px;
+      font-size: 21px;
+    }
+
+    .setup-card p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .primary-action {
+      width: 100%;
+      border: 0;
+      border-radius: 9px;
+      padding: 11px 14px;
+      color: #fff;
+      background: var(--blue);
+      font-weight: 800;
+    }
+
+    .phone.empty #overview > .gpu-tabs,
+    .phone.empty #overview > .progress-card,
+    .phone.empty #overview > .chart-card,
+    .phone.empty #overview > .metric-grid {
+      display: none;
+    }
+
+    .phone.empty .setup-card {
+      display: block;
     }
 
     .progress-head {
@@ -217,7 +264,7 @@
     }
 
     .progress-head .epoch {
-      font-size: 42px;
+      font-size: 32px;
       line-height: 1;
       font-weight: 900;
       color: #0b1220;
@@ -231,8 +278,66 @@
 
     .percent {
       color: var(--blue);
-      font-size: 28px;
+      font-size: 24px;
       font-weight: 900;
+    }
+
+    .percent small {
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .progress-track {
+      height: 7px;
+      margin: 16px 0;
+      border-radius: 999px;
+      background: #e0e7ff;
+      overflow: hidden;
+    }
+
+    .app-icon img {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .progress-track span {
+      display: block;
+      width: 58%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--blue);
+    }
+
+    .overview-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .overview-stats span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .overview-stats strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 17px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .overview-stats small {
+      color: var(--muted);
     }
 
     .console-panel {
@@ -601,31 +706,32 @@
   <main class="stage">
     <aside class="brief">
       <div class="brand-row">
-        <div class="app-icon"><div class="icon-card"></div></div>
+        <div class="app-icon"><img src="app-icon.svg" alt="模迹应用图标" /></div>
         <div>
-          <h1>训迹</h1>
+          <h1>模迹</h1>
           <p class="subtitle">AI 训练监控 App · 面向 OpenMMLab、YOLO 和自定义 PyTorch 训练。</p>
         </div>
       </div>
       <section class="design-card">
         <h2>这版 UI 的设计方向</h2>
-        <p class="subtitle">首页一眼看进度、Best 指标和当前指标；曲线页只展示你在设置中勾选的指标；设置页集中处理服务器地址、Token、通知和指标选择。</p>
+        <p class="subtitle">首页先看任务进度、当前与最佳指标，再顺势查看趋势；设置页集中处理服务器地址、Token、通知和指标选择。</p>
         <div class="chips">
           <span class="chip">整洁卡片</span>
           <span class="chip">中文主界面</span>
           <span class="chip">英文指标</span>
-          <span class="chip">控制台仪表盘</span>
-          <span class="chip">锁屏通知思路</span>
+          <span class="chip">趋势优先</span>
+          <span class="chip">紧凑筛选</span>
           <span class="chip">最小权限</span>
         </div>
         <div class="state-buttons">
           <button class="active" data-state="training">训练中</button>
           <button data-state="finished">已完成</button>
           <button data-state="error">异常</button>
+          <button data-state="empty">未配置</button>
         </div>
         <div class="state-buttons theme-buttons">
-          <button class="active" data-theme="normal">普通界面</button>
-          <button data-theme="glass">毛玻璃</button>
+          <button class="active" data-theme="normal">简洁</button>
+          <button data-theme="glass">柔光</button>
         </div>
       </section>
     </aside>
@@ -635,10 +741,26 @@
         <section class="page active" id="overview">
           <div class="topbar">
             <div>
-              <div class="title">训迹</div>
-              <div class="sync">实时同步中 · 上次更新 20:58</div>
+              <div class="title">模迹</div>
+              <div class="run-name" id="runName">segmentation-exp-07</div>
+              <div class="sync-row">
+                <div class="sync">实时同步中 · 20:58</div>
+                <button class="refresh">刷新</button>
+              </div>
             </div>
             <div class="status-pill" id="statusText">训练中</div>
+          </div>
+
+          <div class="gpu-tabs" aria-label="GPU 筛选">
+            <button class="active">全部 2</button>
+            <button>GPU 0</button>
+            <button>GPU 1</button>
+          </div>
+
+          <div class="card setup-card">
+            <h3>连接训练服务器</h3>
+            <p>填写服务器地址和访问 Token 后，训练进度、指标与趋势会显示在这里。</p>
+            <button class="primary-action">开始配置</button>
           </div>
 
           <div class="card progress-card">
@@ -647,28 +769,14 @@
                 <div class="label">训练进度</div>
                 <div class="epoch">174 / 300</div>
               </div>
-              <div class="percent">58%</div>
+              <div class="percent">58%<small>训练中</small></div>
             </div>
-            <div class="console-panel">
-              <div class="gauge"><strong id="gaugeValue">58%</strong></div>
-              <div class="console-copy">
-                <strong id="consoleTitle">训练任务运行中</strong>
-                <div class="console-line"><span>Epoch</span><b>174 / 300</b></div>
-                <div class="console-line"><span>ETA</span><b id="etaValue">33分18秒</b></div>
-                <div class="console-line"><span>Mode</span><b id="modeValue">训练中</b></div>
-              </div>
+            <div class="progress-track"><span></span></div>
+            <div class="overview-stats">
+              <div><span>预计剩余</span><strong id="etaValue">33分18秒</strong></div>
+              <div><span>当前 mIoU</span><strong>78.43</strong></div>
+              <div><span>最佳 mIoU</span><strong>78.89</strong><small>第 89 轮</small></div>
             </div>
-
-            <div class="readout-row">
-              <div class="readout"><span>Best mIoU</span><strong>78.89</strong></div>
-              <div class="readout"><span>Current</span><strong>78.43</strong></div>
-              <div class="readout"><span>Progress</span><strong>58%</strong></div>
-            </div>
-          </div>
-
-          <div class="metric-grid">
-            <div class="metric"><small>mIoU</small><strong>78.43</strong><small>Best 78.89 @ epoch 89</small></div>
-            <div class="metric"><small>Loss</small><strong>0.0948</strong><small>Best 0.0948 @ epoch 174</small></div>
           </div>
 
           <div class="card chart-card">
@@ -689,26 +797,31 @@
               <circle class="dot" cx="308" cy="54" r="4" />
             </svg>
           </div>
+
+          <div class="metric-grid">
+            <div class="metric"><small>Loss</small><strong>0.0948</strong><small>Best 0.0948 @ epoch 174</small></div>
+            <div class="metric"><small>Dice</small><strong>84.21</strong><small>Best 84.40 @ epoch 168</small></div>
+          </div>
         </section>
 
         <section class="page" id="charts">
           <div class="topbar">
             <div>
-              <div class="title">曲线分析</div>
-              <div class="sync">只显示设置中勾选且服务器检测到的指标</div>
+              <div class="title">训练趋势</div>
+              <div class="sync">181 个历史点 · 2 个可分析指标</div>
             </div>
           </div>
-          <div class="card">
-            <div class="label">指标选择</div>
-            <div class="metric-picker">
-              <button class="pill-button on">mIoU</button>
-              <button class="pill-button on">Loss</button>
-              <button class="pill-button">BBox mAP</button>
-              <button class="pill-button">Top1 Acc</button>
-            </div>
+          <div class="gpu-tabs" aria-label="GPU 筛选">
+            <button class="active">全部 2</button>
+            <button>GPU 0</button>
+            <button>GPU 1</button>
           </div>
           <div class="card chart-card">
-            <h3>mIoU Trend <span>单独坐标轴</span></h3>
+            <h3>mIoU <span>181 点</span></h3>
+            <div class="overview-stats">
+              <div><span>当前</span><strong>78.43</strong></div>
+              <div><span>最佳</span><strong>78.89</strong><small>第 89 轮</small></div>
+            </div>
             <svg class="chart" viewBox="0 0 330 270">
               <line class="axis" x1="46" y1="230" x2="308" y2="230" />
               <line class="axis" x1="46" y1="36" x2="46" y2="230" />
@@ -725,7 +838,11 @@
             </svg>
           </div>
           <div class="card chart-card">
-            <h3>Loss Trend <span>单独坐标轴</span></h3>
+            <h3>Loss <span>76 点</span></h3>
+            <div class="overview-stats">
+              <div><span>当前</span><strong>0.0948</strong></div>
+              <div><span>最佳</span><strong>0.0948</strong><small>第 174 轮</small></div>
+            </div>
             <svg class="chart" viewBox="0 0 330 270">
               <line class="axis" x1="46" y1="230" x2="308" y2="230" />
               <line class="axis" x1="46" y1="36" x2="46" y2="230" />
@@ -747,15 +864,13 @@
           <div class="topbar">
             <div>
               <div class="title">设置</div>
-              <div class="sync">服务器连接、指标、通知和安全</div>
+              <div class="sync">连接、显示、提醒与本地数据</div>
             </div>
           </div>
           <div class="card">
+            <div class="label">训练服务器</div>
             <div class="settings-row"><div><b>后端地址</b><span>https://server.example.com:6006</span></div></div>
             <div class="settings-row"><div><b>访问 Token</b><span>已加密保存，输入时默认隐藏</span></div></div>
-            <div class="settings-row"><div><b>界面风格</b><span>普通 / 毛玻璃，可在设置中切换</span></div></div>
-            <div class="settings-row"><div><b>通知栏训练状态</b><span>显示 Epoch、Best mIoU、ETA</span></div><div class="toggle"></div></div>
-            <div class="settings-row"><div><b>刷新间隔</b><span>2 秒</span></div></div>
           </div>
           <div class="card">
             <div class="label">显示指标</div>
@@ -769,7 +884,16 @@
             </div>
           </div>
           <div class="card">
-            <div class="settings-row"><div><b>关于我们</b><span>训迹 v0.7.29 · 作者 Zephyer · 项目主页与反馈渠道</span></div></div>
+            <div class="label">显示与刷新</div>
+            <div class="settings-row"><div><b>界面风格</b><span>简洁 / 柔光</span></div></div>
+            <div class="settings-row"><div><b>刷新间隔</b><span>5 秒</span></div></div>
+          </div>
+          <div class="card">
+            <div class="label">通知提醒</div>
+            <div class="settings-row"><div><b>通知栏训练状态</b><span>Epoch、最佳指标和 ETA</span></div><div class="toggle"></div></div>
+          </div>
+          <div class="card">
+            <div class="settings-row"><div><b>关于我们</b><span>模迹 v0.8.0 · 作者 Zephyer · 项目主页与反馈渠道</span></div></div>
             <div class="settings-row"><div><b>隐私说明</b><span>不采集通讯录、定位、相册；只连接用户配置的训练后端。</span></div></div>
           </div>
         </section>
@@ -786,10 +910,8 @@
   <script>
     const phone = document.getElementById("phone");
     const statusText = document.getElementById("statusText");
-    const consoleTitle = document.getElementById("consoleTitle");
-    const gaugeValue = document.getElementById("gaugeValue");
     const etaValue = document.getElementById("etaValue");
-    const modeValue = document.getElementById("modeValue");
+    const runName = document.getElementById("runName");
 
     document.querySelectorAll(".tab").forEach((tab) => {
       tab.addEventListener("click", () => {
@@ -800,30 +922,27 @@
       });
     });
 
-    document.querySelectorAll(".state-buttons button").forEach((button) => {
+    document.querySelectorAll(".state-buttons:not(.theme-buttons) button").forEach((button) => {
       button.addEventListener("click", () => {
-        document.querySelectorAll(".state-buttons button").forEach((item) => item.classList.remove("active"));
+        document.querySelectorAll(".state-buttons:not(.theme-buttons) button").forEach((item) => item.classList.remove("active"));
         button.classList.add("active");
-        phone.classList.remove("training", "finished", "error");
+        phone.classList.remove("training", "finished", "error", "empty");
         phone.classList.add(button.dataset.state);
         if (button.dataset.state === "finished") {
           statusText.textContent = "已完成";
-          consoleTitle.textContent = "训练完成，结果已保存";
-          gaugeValue.textContent = "100%";
+          runName.textContent = "segmentation-exp-07";
           etaValue.textContent = "已完成";
-          modeValue.textContent = "已完成";
         } else if (button.dataset.state === "error") {
           statusText.textContent = "异常";
-          consoleTitle.textContent = "连接异常，保留缓存";
-          gaugeValue.textContent = "--";
+          runName.textContent = "segmentation-exp-07";
           etaValue.textContent = "等待恢复";
-          modeValue.textContent = "异常";
+        } else if (button.dataset.state === "empty") {
+          statusText.textContent = "未配置";
+          runName.textContent = "尚未连接服务器";
         } else {
           statusText.textContent = "训练中";
-          consoleTitle.textContent = "训练任务运行中";
-          gaugeValue.textContent = "58%";
+          runName.textContent = "segmentation-exp-07";
           etaValue.textContent = "33分18秒";
-          modeValue.textContent = "训练中";
         }
       });
     });

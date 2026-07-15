@@ -23,8 +23,8 @@ android {
         applicationId = "com.modeltest.monitor"
         minSdk = 26
         targetSdk = 35
-        versionCode = 47
-        versionName = "0.7.30"
+        versionCode = 48
+        versionName = "0.8.0"
         manifestPlaceholders["usesCleartextTraffic"] = "true"
     }
 
@@ -44,7 +44,8 @@ android {
             manifestPlaceholders["usesCleartextTraffic"] = "true"
         }
         release {
-            manifestPlaceholders["usesCleartextTraffic"] = "false"
+            // Most self-hosted training servers are reached over a local-network IP.
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }

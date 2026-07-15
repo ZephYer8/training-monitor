@@ -1,0 +1,31 @@
+<div class="page">
+  <div class="top">
+    <text class="brand">模迹</text>
+    <text class="status {{statusClass}}">{{statusLabel}}</text>
+  </div>
+
+  <div class="progress-wrap">
+    <text class="progress-text">{{progressText}}</text>
+    <div class="progress-track">
+      <div class="progress-bar" style="width: {{progressWidth}};"></div>
+    </div>
+  </div>
+
+  <text class="summary">{{summary}}</text>
+
+  <div class="metrics">
+    <div class="metric">
+      <text class="metric-label">当前</text>
+      <text class="metric-value">{{currentMetricText}}</text>
+    </div>
+    <div class="metric">
+      <text class="metric-label">Best</text>
+      <text class="metric-value">{{bestMetricText}}</text>
+    </div>
+  </div>
+
+  <div class="footer">
+    <text class="footer-text">{{etaText}}</text>
+    <text class="footer-text">{{updatedText}}</text>
+  </div>
+</div>

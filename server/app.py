@@ -1,12 +1,14 @@
 from datetime import datetime
+from copy import deepcopy
 import hmac
 import math
 import os
 from pathlib import Path
+from threading import RLock, get_ident
 from typing import Dict, Literal, Optional
 import json
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -19,6 +21,9 @@ MAX_RUN_ID_LENGTH = 128
 MAX_GPU_ID_LENGTH = 32
 MAX_GPU_IDS_PER_UPDATE = 16
 MAX_RUNS = 32
+MAX_HISTORY_POINTS = 500
+MAX_SNAPSHOT_UPDATES = 500
+STATE_LOCK = RLock()
 
 
 def parse_cors_origins(raw: str) -> list[str]:
@@ -37,13 +42,17 @@ class TrainingUpdate(BaseModel):
     gpu_id: Optional[str] = Field(default=None, max_length=MAX_GPU_ID_LENGTH)
     gpu_ids: list[str] = Field(default_factory=list, max_length=MAX_GPU_IDS_PER_UPDATE)
     epoch: int = Field(ge=0)
-    total_epochs: int = Field(ge=1)
+    total_epochs: int = Field(ge=0)
     iou: Optional[float] = None
     metric_name: str = Field(default="IoU", max_length=MAX_METRIC_NAME_LENGTH)
     metrics: Dict[str, float] = Field(default_factory=dict)
     loss: Optional[float] = Field(default=None, ge=0.0)
     eta_seconds: Optional[int] = Field(default=None, ge=0)
     status: Literal["training", "finished", "error"] = "training"
+
+
+class TrainingSnapshot(BaseModel):
+    updates: list[TrainingUpdate] = Field(min_length=1, max_length=MAX_SNAPSHOT_UPDATES)
 
 
 def now_text() -> str:
@@ -129,7 +138,7 @@ def normalize_run(loaded: dict) -> dict:
     run["best_metrics"] = safe_dict(run.get("best_metrics"))
     run["best_epochs"] = safe_dict(run.get("best_epochs"))
     run["available_metrics"] = safe_list(run.get("available_metrics"))
-    run["history"] = safe_list(run.get("history"))[-500:]
+    run["history"] = safe_list(run.get("history"))[-MAX_HISTORY_POINTS:]
     run["gpu_ids"] = normalize_gpu_ids(run.get("gpu_ids"), run.get("gpu_id"))
     run["gpu_id"] = run["gpu_ids"][0] if run["gpu_ids"] else None
     return run
@@ -162,12 +171,15 @@ def normalize_state(loaded: dict) -> dict:
 
 def save_state(state: dict) -> None:
     DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp_file = DATA_FILE.with_name(f"{DATA_FILE.name}.tmp")
-    tmp_file.write_text(
-        json.dumps(state, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    tmp_file.replace(DATA_FILE)
+    tmp_file = DATA_FILE.with_name(f".{DATA_FILE.name}.{os.getpid()}.{get_ident()}.tmp")
+    try:
+        tmp_file.write_text(
+            json.dumps(state, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        tmp_file.replace(DATA_FILE)
+    finally:
+        tmp_file.unlink(missing_ok=True)
     try:
         os.chmod(DATA_FILE, 0o600)
     except OSError:
@@ -192,7 +204,7 @@ def parse_time(value: object) -> datetime:
 
 def estimate_eta_seconds(run: dict, epoch: int, total_epochs: int) -> Optional[int]:
     history = run.get("history", [])
-    if epoch <= 0 or not history:
+    if epoch <= 0 or total_epochs <= 0 or not history:
         return None
 
     started_at = run.get("started_at")
@@ -284,7 +296,6 @@ def update_run(run: dict, update: TrainingUpdate, metrics: dict, primary_name: s
     epoch_restarted = bool(run.get("epoch") and update.epoch < run.get("epoch"))
     should_reset = (
         not run.get("started_at")
-        or run.get("status") in {"idle", "finished"}
         or run_changed
         or epoch_restarted
     )
@@ -321,16 +332,20 @@ def update_run(run: dict, update: TrainingUpdate, metrics: dict, primary_name: s
     run["metric_name"] = primary_name
     run["metrics"] = metrics
     run["updated_at"] = now_text()
-    run["history"].append(
-        {
-            "epoch": update.epoch,
-            "iou": primary_value,
-            "metric_name": primary_name,
-            "metrics": metrics,
-            "updated_at": run["updated_at"],
-        }
-    )
-    run["history"] = run["history"][-500:]
+    history_point = {
+        "epoch": update.epoch,
+        "iou": primary_value,
+        "metric_name": primary_name,
+        "metrics": metrics,
+        "updated_at": run["updated_at"],
+    }
+    if run["history"] and run["history"][-1].get("epoch") == update.epoch:
+        previous_metrics = safe_dict(run["history"][-1].get("metrics"))
+        history_point["metrics"] = {**previous_metrics, **metrics}
+        run["history"][-1] = history_point
+    else:
+        run["history"].append(history_point)
+    run["history"] = run["history"][-MAX_HISTORY_POINTS:]
     run["eta_seconds"] = update.eta_seconds
     if run["eta_seconds"] is None:
         run["eta_seconds"] = estimate_eta_seconds(
@@ -371,7 +386,7 @@ def sync_root_from_runs(state: dict) -> None:
     root_runs = state["runs"]
     for key, value in selected.items():
         state[key] = value
-    state["history"] = safe_list(state.get("history"))[-500:]
+    state["history"] = safe_list(state.get("history"))[-MAX_HISTORY_POINTS:]
     state["runs"] = root_runs
     state["active_run_id"] = selected.get("run_id")
     state["available_gpus"] = available_gpus(root_runs)
@@ -395,26 +410,52 @@ def health() -> dict:
 
 
 @app.get("/api/status", dependencies=[Depends(require_token)])
-def get_status() -> dict:
-    return state
+def get_status(history_limit: int = Query(default=200, ge=0, le=MAX_HISTORY_POINTS)) -> dict:
+    with STATE_LOCK:
+        return state_snapshot(history_limit)
 
 
-@app.post("/api/status", dependencies=[Depends(require_token)])
-def update_status(update: TrainingUpdate) -> dict:
-    metrics = build_metrics(update)
+def state_snapshot(history_limit: int = MAX_HISTORY_POINTS) -> dict:
+    snapshot = deepcopy(state)
+    snapshot["history"] = safe_list(snapshot.get("history"))[-history_limit:] if history_limit else []
+    for run in safe_list(snapshot.get("runs")):
+        if isinstance(run, dict):
+            run["history"] = safe_list(run.get("history"))[-history_limit:] if history_limit else []
+    return snapshot
+
+
+def apply_update(update: TrainingUpdate, metrics: dict) -> None:
     primary_name = update.metric_name if update.metric_name in metrics else next(iter(metrics))
     gpu_ids = normalize_gpu_ids(update.gpu_ids, update.gpu_id)
     run_id = run_identity(update, gpu_ids)
     run = find_or_create_run(state, run_id)
     update_run(run, update, metrics, primary_name, gpu_ids)
     sync_root_from_runs(state)
-    save_state(state)
-    return state
+
+
+@app.post("/api/status", dependencies=[Depends(require_token)])
+def update_status(update: TrainingUpdate) -> dict:
+    metrics = build_metrics(update)
+    with STATE_LOCK:
+        apply_update(update, metrics)
+        save_state(state)
+        return state_snapshot()
+
+
+@app.post("/api/status/snapshot", dependencies=[Depends(require_token)])
+def update_snapshot(snapshot: TrainingSnapshot) -> dict:
+    prepared = [(update, build_metrics(update)) for update in snapshot.updates]
+    with STATE_LOCK:
+        for update, metrics in prepared:
+            apply_update(update, metrics)
+        save_state(state)
+        return {"ok": True, "updated": len(prepared), "active_run_id": state.get("active_run_id")}
 
 
 @app.post("/api/reset", dependencies=[Depends(require_token)])
 def reset_status() -> dict:
-    state.clear()
-    state.update(empty_state())
-    save_state(state)
-    return state
+    with STATE_LOCK:
+        state.clear()
+        state.update(empty_state())
+        save_state(state)
+        return state_snapshot()

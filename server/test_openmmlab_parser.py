@@ -217,6 +217,24 @@ def test_auto_watch_skips_unparseable_latest_file() -> None:
         assert parsed[2][4]["mIoU"] == 79.0
 
 
+def test_yolo_csv_without_configured_total_stays_open() -> None:
+    with temp_test_dir("yolo-unknown-total") as tmp:
+        csv_path = write(
+            tmp / "results.csv",
+            """
+            epoch,metrics/mAP50-95(B),train/box_loss
+            0,0.31,1.2
+            1,0.42,0.9
+            """,
+        )
+
+        total_epochs, _, latest, rows = parse_file(csv_path, 0)
+        assert total_epochs == 0
+        assert latest is not None
+        assert latest[1] == 2
+        assert len(rows) == 2
+
+
 if __name__ == "__main__":
     test_mmdetection_text_log()
     test_mmengine_json_log()
@@ -228,4 +246,5 @@ if __name__ == "__main__":
     test_prefixed_3d_metrics_and_detection_suffixes()
     test_mmpretrain_mmaction_mmhuman3d_metrics()
     test_auto_watch_skips_unparseable_latest_file()
+    test_yolo_csv_without_configured_total_stays_open()
     print("openmmlab parser tests ok")

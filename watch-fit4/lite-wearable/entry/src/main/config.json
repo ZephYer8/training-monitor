@@ -1,0 +1,51 @@
+{
+  "app": {
+    "bundleName": "com.modeltest.monitor.watchfit",
+    "vendor": "Zephyer",
+    "version": {
+      "code": 1,
+      "name": "0.1.0"
+    }
+  },
+  "deviceConfig": {},
+  "module": {
+    "package": "com.modeltest.monitor.watchfit",
+    "name": ".MainAbility",
+    "deviceType": [
+      "liteWearable"
+    ],
+    "abilities": [
+      {
+        "name": ".MainAbility",
+        "label": "模迹",
+        "type": "page",
+        "launchType": "standard",
+        "visible": true,
+        "srcPath": "MainAbility",
+        "icon": "$media:icon",
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "action.system.home"
+            ]
+          }
+        ]
+      }
+    ],
+    "js": [
+      {
+        "name": ".MainAbility",
+        "pages": [
+          "pages/index/index"
+        ],
+        "window": {
+          "designWidth": 466,
+          "autoDesignWidth": false
+        }
+      }
+    ]
+  }
+}

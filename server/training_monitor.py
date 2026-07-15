@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import os
-from typing import Dict, Optional, Sequence
+from typing import Dict, Mapping, Optional, Sequence
 
 import requests
 
@@ -31,7 +31,7 @@ class TrainingMonitor:
     token: str = ""
     timeout: float = 3.0
 
-    def log(
+    def build_payload(
         self,
         *,
         run_id: Optional[str] = None,
@@ -67,11 +67,55 @@ class TrainingMonitor:
         if eta_seconds is not None:
             payload["eta_seconds"] = int(eta_seconds)
 
+        return payload
+
+    def log(
+        self,
+        *,
+        run_id: Optional[str] = None,
+        gpu_id: Optional[str] = None,
+        gpu_ids: Optional[Sequence[str]] = None,
+        epoch: int,
+        total_epochs: int,
+        iou: Optional[float] = None,
+        metric_name: str = "IoU",
+        metrics: Optional[Dict[str, float]] = None,
+        loss: Optional[float] = None,
+        eta_seconds: Optional[int] = None,
+        status: str = "training",
+    ) -> dict:
+        payload = self.build_payload(
+            run_id=run_id,
+            gpu_id=gpu_id,
+            gpu_ids=gpu_ids,
+            epoch=epoch,
+            total_epochs=total_epochs,
+            iou=iou,
+            metric_name=metric_name,
+            metrics=metrics,
+            loss=loss,
+            eta_seconds=eta_seconds,
+            status=status,
+        )
+
         response = requests.post(
             f"{self.server_url.rstrip('/')}/api/status",
             headers={"X-Monitor-Token": self.token} if self.token else None,
             json=payload,
             timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def log_batch(self, updates: Sequence[Mapping[str, object]]) -> dict:
+        payloads = [self.build_payload(**dict(update)) for update in updates]
+        if not payloads:
+            return {"ok": True, "updated": 0}
+        response = requests.post(
+            f"{self.server_url.rstrip('/')}/api/status/snapshot",
+            headers={"X-Monitor-Token": self.token} if self.token else None,
+            json={"updates": payloads},
+            timeout=max(self.timeout, 10.0),
         )
         response.raise_for_status()
         return response.json()
