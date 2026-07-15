@@ -102,6 +102,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URI
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
@@ -485,8 +486,9 @@ private fun MonitorRoot() {
 
     suspend fun refreshOnce(url: String = savedUrl, token: String = savedToken) {
         val normalizedUrl = normalizeBaseUrl(url)
-        if (normalizedUrl.isBlank()) {
-            error = "请先在设置里填写后端地址"
+        val validationError = serverUrlValidationError(normalizedUrl)
+        if (validationError != null) {
+            error = validationError
             hasFreshStatus = false
             stopTrainingNotificationService(context)
             return
@@ -690,6 +692,14 @@ private fun MonitorRoot() {
                                 testMessage = "请先填写后端地址"
                                 return@save
                             }
+                            serverUrlValidationError(nextUrl)?.let {
+                                testMessage = it
+                                return@save
+                            }
+                            if (draftToken.isBlank()) {
+                                testMessage = "请填写访问 Token"
+                                return@save
+                            }
                             savedUrl = nextUrl
                             draftUrl = savedUrl
                             savedToken = draftToken.trim()
@@ -706,6 +716,14 @@ private fun MonitorRoot() {
                                 val testUrl = normalizeBaseUrl(draftUrl)
                                 if (testUrl.isBlank()) {
                                     testMessage = "请先填写后端地址"
+                                    return@launch
+                                }
+                                serverUrlValidationError(testUrl)?.let {
+                                    testMessage = it
+                                    return@launch
+                                }
+                                if (draftToken.isBlank()) {
+                                    testMessage = "请填写访问 Token"
                                     return@launch
                                 }
                                 testMessage = "正在测试连接..."
@@ -1522,10 +1540,17 @@ private fun SettingsScreen(
                 color = MutedInk,
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (normalizeBaseUrl(draftUrl).startsWith("http://")) {
+            val draftUrlError = draftUrl.takeIf { it.isNotBlank() }?.let(::serverUrlValidationError)
+            if (draftUrlError != null) {
                 Text(
-                    "当前使用 HTTP，适合内网或临时测试；公网长期使用建议配置 HTTPS，避免 Token 在网络中被截获。",
-                    color = Color(0xFFB45309),
+                    draftUrlError,
+                    color = Color(0xFFB42318),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else if (normalizeBaseUrl(draftUrl).startsWith("http://")) {
+                Text(
+                    "局域网 HTTP 已允许；公网地址必须使用 HTTPS。",
+                    color = Color(0xFFB54708),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -1987,6 +2012,7 @@ private fun BottomTabs(current: AppPage, glassStyle: Boolean, onChange: (AppPage
 
 
 private suspend fun fetchStatusJson(client: OkHttpClient, baseUrl: String, token: String): String {
+    serverUrlValidationError(baseUrl)?.let { error(it) }
     return withContext(Dispatchers.IO) {
         val requestBuilder = Request.Builder()
             .url("${baseUrl.trim().trimEnd('/')}/api/status?history_limit=120")
@@ -2332,15 +2358,51 @@ private fun syncText(status: TrainingStatus, error: String?, isRefreshing: Boole
 }
 
 
-private fun normalizeBaseUrl(value: String): String {
+internal fun normalizeBaseUrl(value: String): String {
     val trimmed = value.trim().trimEnd('/')
     if (trimmed.isBlank()) return ""
     val lowered = trimmed.lowercase(Locale.US)
     return if (lowered.startsWith("http://") || lowered.startsWith("https://")) {
         trimmed
+    } else if (trimmed.contains("://")) {
+        trimmed
     } else {
         "http://$trimmed"
     }
+}
+
+
+internal fun serverUrlValidationError(value: String): String? {
+    val normalized = normalizeBaseUrl(value)
+    if (normalized.isBlank()) return "请先填写后端地址"
+    val uri = runCatching { URI(normalized) }.getOrNull() ?: return "后端地址格式不正确"
+    val scheme = uri.scheme?.lowercase(Locale.US)
+    if (scheme !in setOf("http", "https")) return "后端地址只支持 HTTP 或 HTTPS"
+    if (uri.host.isNullOrBlank() || uri.userInfo != null || uri.fragment != null || uri.query != null) {
+        return "后端地址格式不正确"
+    }
+    if (scheme == "http" && !isPrivateNetworkHost(uri.host)) {
+        return "公网服务器必须使用 HTTPS，避免访问 Token 被截获"
+    }
+    return null
+}
+
+
+private fun isPrivateNetworkHost(host: String): Boolean {
+    val normalized = host.trim('[', ']').lowercase(Locale.US)
+    if (normalized == "localhost" || normalized == "::1") return true
+    if (normalized.endsWith(".local") || normalized.endsWith(".lan") || !normalized.contains('.')) return true
+    if (normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:")) return true
+
+    val parts = normalized.split('.')
+    if (parts.size != 4) return false
+    val octets = parts.map { it.toIntOrNull() ?: return false }
+    if (octets.any { it !in 0..255 }) return false
+    return octets[0] == 10 ||
+        octets[0] == 127 ||
+        (octets[0] == 169 && octets[1] == 254) ||
+        (octets[0] == 172 && octets[1] in 16..31) ||
+        (octets[0] == 192 && octets[1] == 168)
 }
 
 
@@ -2369,8 +2431,8 @@ private fun appVersionText(context: Context): String {
 
 private fun loadBaseUrl(context: Context): String {
     return settingsPreferences(context)
-        .getString("base_url", "http://10.0.2.2:6006")
-        ?: "http://10.0.2.2:6006"
+        .getString("base_url", "")
+        ?: ""
 }
 
 
@@ -2673,7 +2735,7 @@ private fun buildTrainingNotification(
     val expandedText = contentOverride ?: notificationExpandedText(context, status)
     val notification = Notification.Builder(context, TrainingChannelId)
         .setSmallIcon(R.drawable.ic_notification)
-        .setColor(0xFF2563EB.toInt())
+        .setColor(0xFF155EEF.toInt())
         .setContentTitle(title)
         .setContentText(compactText)
         .setStyle(Notification.BigTextStyle().bigText(expandedText))
@@ -2684,7 +2746,6 @@ private fun buildTrainingNotification(
         .setOnlyAlertOnce(true)
         .setShowWhen(true)
         .setWhen(System.currentTimeMillis())
-        .setPriority(Notification.PRIORITY_HIGH)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
         .setCategory(Notification.CATEGORY_STATUS)
         .setTicker(compactText)
@@ -2720,7 +2781,7 @@ private fun buildFinishedNotification(context: Context, status: TrainingStatus):
     val expandedText = notificationExpandedText(context, status)
     return Notification.Builder(context, TrainingFinishedChannelId)
         .setSmallIcon(R.drawable.ic_notification)
-        .setColor(0xFF16A34A.toInt())
+        .setColor(0xFF12B76A.toInt())
         .setContentTitle(title)
         .setContentText(content)
         .setStyle(Notification.BigTextStyle().bigText(expandedText))
@@ -2728,7 +2789,6 @@ private fun buildFinishedNotification(context: Context, status: TrainingStatus):
         .setAutoCancel(true)
         .setShowWhen(true)
         .setWhen(System.currentTimeMillis())
-        .setPriority(Notification.PRIORITY_HIGH)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
         .setCategory(Notification.CATEGORY_STATUS)
         .setTicker(content)
@@ -2746,7 +2806,7 @@ private fun buildPublicTrainingNotification(
 ): Notification {
     return Notification.Builder(context, channelId)
         .setSmallIcon(R.drawable.ic_notification)
-        .setColor(0xFF2563EB.toInt())
+        .setColor(0xFF155EEF.toInt())
         .setContentTitle(title)
         .setContentText(text)
         .setVisibility(Notification.VISIBILITY_PUBLIC)

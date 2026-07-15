@@ -3,8 +3,13 @@ name: Android APK
 on:
   workflow_dispatch:
   push:
+    branches:
+      - "main"
     tags:
       - "v*"
+  pull_request:
+    branches:
+      - "main"
 
 permissions:
   contents: write
@@ -43,10 +48,10 @@ jobs:
       - name: Run project audit
         run: python scripts/audit_project.py
 
-      - name: Run Android lint
+      - name: Run Android tests and lint
         run: |
           chmod +x android/gradlew
-          (cd android && ./gradlew :app:lintDebug)
+          (cd android && ./gradlew :app:testDebugUnitTest :app:lintDebug)
 
       - name: Resolve signing and market readiness
         run: |

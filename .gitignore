@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+*.egg-info/
 .venv/
 server/state.json
 state.json

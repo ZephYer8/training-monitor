@@ -98,6 +98,7 @@ def audit_gradle() -> None:
         'applicationId = "com.modeltest.monitor"': "stable application id",
         "targetSdk = 35": "targetSdk 35",
         'manifestPlaceholders["usesCleartextTraffic"] = "true"': "local-network cleartext is explicitly configured",
+        'testImplementation("junit:junit:4.13.2")': "Android unit test dependency",
     }
     for needle, label in required.items():
         if needle not in gradle:
@@ -117,6 +118,8 @@ def audit_release_workflow() -> None:
         "privacy_policy_url=${APP_PRIVACY_POLICY_URL:-}": "build info privacy policy url",
         "contact_email=${APP_CONTACT_EMAIL:-}": "build info contact email",
         "app_beian_id=${APP_BEIAN_ID:-}": "build info beian id",
+        ":app:testDebugUnitTest": "Android unit tests",
+        'branches:': "main branch continuous integration",
     }
     for needle, label in required.items():
         if needle not in workflow:

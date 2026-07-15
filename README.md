@@ -184,7 +184,7 @@ Auto watch 1/0 [1]:
 如果自动检测到的公网地址不对，可以手动设置：
 
 ```bash
-training-monitor config set PUBLIC_URL http://你的公网地址:端口
+training-monitor config set PUBLIC_URL https://你的公网域名
 training-monitor restart
 ```
 
@@ -289,7 +289,7 @@ cd android
 
 打开 App 后填写：
 
-- `Backend URL`：例如 `http://region-xx.example.com:12345`
+- `Backend URL`：局域网可填写 `http://192.168.1.20:6006`；公网必须填写 `https://monitor.example.com`
 - `Access Token`：服务器 `training-monitor connection` 输出的 token
 
 填写后点击“保存并连接”。
@@ -611,11 +611,11 @@ training-monitor connection
 
 常见情况：
 
-- AutoDL / SeetaCloud 等平台一般会给你一个映射后的公网 URL。
+- AutoDL / SeetaCloud 等平台一般会给你一个映射后的公网 URL；请使用平台提供的 HTTPS 地址。
 - 云服务器需要安全组放行端口。
 - 校园网或公司内网可能不能直接从手机流量访问。
 - 如果 App 报 `HTTP 401`，说明 token 填错了。
-- 如果 App 报连接失败，通常是 URL、端口或公网映射问题。
+- 如果 App 报连接失败，通常是 URL、端口、HTTPS 或公网映射问题。
 
 ## 13. 安全建议
 
@@ -625,7 +625,7 @@ training-monitor connection
 
 - `access token` 只填在自己的手机 App 里，不要发到聊天、群、笔记或公开仓库。
 - 如果 token 泄露，执行 `training-monitor rotate-token` 重新生成。
-- 如果平台提供 HTTPS 公网地址，App 里优先填写 `https://...`。
+- 局域网私有地址可以使用 HTTP；公网地址必须使用 `https://...`，否则 App 会拒绝发送 Token。
 - GitHub 下载慢时可以手动使用镜像，但镜像源不是默认开启的。
 - 如果自动扫描范围太大，用 `training-monitor config set LOG_ROOTS "/你的训练输出目录"` 缩小范围。
 
