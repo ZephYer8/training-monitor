@@ -13,6 +13,7 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -127,6 +128,7 @@ private const val HuaweiWatchSyncEnabledKey = "huawei_watch_sync_enabled"
 private const val FinishedNotificationSignatureKey = "finished_notification_signature"
 private const val PrivacyAcceptedKey = "privacy_accepted"
 private const val UiStyleKey = "ui_style"
+private const val PrivacyPolicyUrl = "https://github.com/ZephYer8/training-monitor/blob/main/PRIVACY.md"
 private const val TrainingNotificationId = 4100
 private const val TrainingFinishedNotificationId = 4101
 private const val TrainingChannelId = "training_status_lock_screen_v2"
@@ -1707,7 +1709,15 @@ private fun SettingsScreen(
                 onClick = { showPrivacyPolicy = true },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("查看隐私政策要点")
+                Text("查看隐私政策摘要")
+            }
+            OutlinedButton(
+                onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PrivacyPolicyUrl)))
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("打开完整隐私政策")
             }
         }
 
@@ -1722,7 +1732,7 @@ private fun SettingsScreen(
                 color = MutedInk,
             )
             Text(
-                "隐私与权限说明可在本页上方查看；正式分发时请以应用市场展示的隐私政策链接为准。",
+                "完整隐私政策可在本页上方打开；正式分发时以应用市场展示的同一政策链接为准。",
                 color = MutedInk,
             )
         }
@@ -1783,6 +1793,7 @@ private fun PrivacyPolicyDialog(onDismiss: () -> Unit) {
                 Text("包名：com.modeltest.monitor")
                 Text("项目主页：github.com/ZephYer8/training-monitor")
                 Text("反馈渠道：GitHub Issues 或应用市场反馈入口")
+                Text("完整政策：$PrivacyPolicyUrl")
                 Text("功能用途：连接你配置的训练监控后端，展示训练进度、指标曲线、最佳指标、预计剩余时间和训练完成提醒。")
                 Text("收集的信息：服务器地址、访问 Token、刷新间隔、勾选指标和最后一次训练状态缓存。")
                 Text("权限使用：网络权限用于访问训练监控后端；通知权限和前台服务用于通知栏、锁屏训练状态和完成提醒。")

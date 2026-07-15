@@ -20,6 +20,8 @@
 
 安全默认值：服务端接口必须使用 token；App 会加密保存 token；安装脚本默认只从 GitHub 官方 Release 下载服务端安装包，镜像下载需要你手动开启。
 
+[查看模迹完整隐私政策](https://github.com/ZephYer8/training-monitor/blob/main/PRIVACY.md)
+
 ## 1. 快速开始
 
 推荐先用 pip 安装服务器端。安装后会像 `tensorboard` 一样在当前 Python/Conda 环境里提供 `training-monitor` 命令。学校服务器或国内机房如果直连 GitHub 很慢，优先用镜像 wheel：
@@ -632,6 +634,8 @@ training-monitor connection
 当前安全边界：
 
 - `/api/status`、`/api/status/snapshot` 和 `/api/reset` 必须带正确 `X-Monitor-Token`。
+- API POST 请求体最大 4 MiB，且必须携带 `Content-Length`；连续错误 Token 尝试会被短时节流。
+- API 响应默认使用 `Cache-Control: no-store`，避免训练状态或错误信息被中间缓存。
 - token、配置文件、状态文件默认按当前用户私有权限保存。
 - App 使用 Android Keystore 加密保存 token，并关闭系统备份。
 - App 设置页提供“隐私与权限”说明，并支持清除训练缓存、清除本机 Token。
@@ -699,7 +703,7 @@ rm -f ~/bin/training-monitor
 当前代码已经具备测试 APK、服务端安装脚本、Token 鉴权、App 本地加密保存 Token、首次使用隐私提示、通知权限说明、离线缓存和 OpenMMLab 常见日志自动识别能力。正式提交应用市场前，还需要补齐这些外部材料：
 
 - 正式签名：在 GitHub Secrets 配置 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD`，重新打包后得到正式 release APK。未配置这些密钥时，GitHub Release 会生成测试 APK，并同时上传 `training-monitor-build-info.txt` 标明 `market_ready=false`，不要用于应用市场提交。
-- 隐私政策 URL：应用市场通常要求填写可公开访问的隐私政策链接，且 App 内应能方便访问隐私与权限说明。
+- 隐私政策 URL：仓库已提供公开的 [`PRIVACY.md`](https://github.com/ZephYer8/training-monitor/blob/main/PRIVACY.md)，上架时仍需在应用市场和 GitHub Actions 变量中填写该 URL。
 - App 备案：如果公开向中国大陆用户分发，按应用市场和接入服务商要求完成 APP 备案或相关主体信息提交。
 - 主体资料：准备开发者姓名或主体名称、联系方式、应用名称“模迹”、作者“Zephyer”、包名 `com.modeltest.monitor`。
 - 权限说明：首次使用时 App 会展示隐私与权限提示；说明只使用网络、通知、前台服务权限；不读取通讯录、定位、相册、麦克风、摄像头。

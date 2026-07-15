@@ -41,9 +41,10 @@ jobs:
 
       - name: Install and test server
         run: |
-          python -m pip install -r server/requirements.txt
+          python -m pip install -r server/requirements-test.txt
           python server/test_openmmlab_parser.py
           python server/test_multi_gpu_state.py
+          python server/test_api_security.py
 
       - name: Run project audit
         run: python scripts/audit_project.py

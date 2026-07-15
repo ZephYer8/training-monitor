@@ -209,11 +209,17 @@ def audit_server_security() -> None:
         "MAX_RUN_ID_LENGTH = 128",
         "MAX_HISTORY_POINTS = 500",
         "MAX_SNAPSHOT_UPDATES = 500",
+        "MAX_REQUEST_BODY_BYTES = 4_194_304",
+        "AUTH_FAILURE_LIMIT = 20",
+        "AUTH_FAILURE_MAX_CLIENTS = 2_048",
         "def parse_cors_origins",
         'origin != "*"',
         "def clean_metric_name",
         "def finite_float",
         "math.isfinite",
+        'response.headers["Cache-Control"] = "no-store"',
+        'status_code=429',
+        'status_code=413',
         "safe_list(snapshot.get(\"history\"))[-history_limit:]",
         ".replace(DATA_FILE)",
         "too many metrics in one update",
@@ -231,12 +237,19 @@ def audit_server_security() -> None:
 def audit_privacy_text() -> None:
     main = text("android/app/src/main/java/com/modeltest/monitor/MainActivity.kt")
     readme = text("README.md")
+    policy = text("PRIVACY.md")
     for needle in ("隐私与权限提示", "清除 Token", "撤回同意并停止使用"):
         if needle not in main:
             fail(f"missing app privacy control text: {needle}")
     for needle in ("个人信息保护法", "App违法违规收集使用个人信息行为认定方法", "隐私政策要点模板"):
         if needle not in readme:
             fail(f"missing compliance note in README: {needle}")
+    for needle in ("模迹隐私政策", "访问 Token", "Android Keystore", "第三方服务与共享", "保存期限与删除", "联系方式"):
+        if needle not in policy:
+            fail(f"privacy policy missing required section: {needle}")
+    policy_url = "https://github.com/ZephYer8/training-monitor/blob/main/PRIVACY.md"
+    if policy_url not in main or policy_url not in readme:
+        fail("public privacy policy URL must be exposed in App and README")
     ok("privacy controls and compliance notes")
 
 
@@ -247,6 +260,15 @@ def run_openmmlab_parser_test() -> None:
         check=True,
     )
     ok("OpenMMLab parser test")
+
+
+def run_api_security_test() -> None:
+    subprocess.run(
+        [sys.executable, str(ROOT / "server/test_api_security.py")],
+        cwd=ROOT,
+        check=True,
+    )
+    ok("server API security test")
 
 
 def main() -> None:
@@ -260,6 +282,7 @@ def main() -> None:
     audit_server_security()
     audit_privacy_text()
     run_openmmlab_parser_test()
+    run_api_security_test()
     print("[audit] all checks passed")
 
 

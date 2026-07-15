@@ -1,15 +1,18 @@
 from datetime import datetime
 from copy import deepcopy
+from collections import deque
 import hmac
 import math
 import os
 from pathlib import Path
 from threading import RLock, get_ident
+import time
 from typing import Dict, Literal, Optional
 import json
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 
@@ -23,7 +26,13 @@ MAX_GPU_IDS_PER_UPDATE = 16
 MAX_RUNS = 32
 MAX_HISTORY_POINTS = 500
 MAX_SNAPSHOT_UPDATES = 500
+MAX_REQUEST_BODY_BYTES = 4_194_304
+AUTH_FAILURE_LIMIT = 20
+AUTH_FAILURE_WINDOW_SECONDS = 60
+AUTH_FAILURE_MAX_CLIENTS = 2_048
 STATE_LOCK = RLock()
+AUTH_FAILURE_LOCK = RLock()
+AUTH_FAILURES: dict[str, deque[float]] = {}
 
 
 def parse_cors_origins(raw: str) -> list[str]:
@@ -186,11 +195,43 @@ def save_state(state: dict) -> None:
         pass
 
 
-def require_token(x_monitor_token: str = Header(default="")) -> None:
+def auth_client_id(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def record_auth_failure(client_id: str) -> int:
+    now = time.monotonic()
+    cutoff = now - AUTH_FAILURE_WINDOW_SECONDS
+    with AUTH_FAILURE_LOCK:
+        if client_id not in AUTH_FAILURES and len(AUTH_FAILURES) >= AUTH_FAILURE_MAX_CLIENTS:
+            AUTH_FAILURES.pop(next(iter(AUTH_FAILURES)))
+        failures = AUTH_FAILURES.setdefault(client_id, deque())
+        while failures and failures[0] <= cutoff:
+            failures.popleft()
+        failures.append(now)
+        if len(failures) < AUTH_FAILURE_LIMIT:
+            return 0
+        return max(1, math.ceil(AUTH_FAILURE_WINDOW_SECONDS - (now - failures[0])))
+
+
+def clear_auth_failures(client_id: str) -> None:
+    with AUTH_FAILURE_LOCK:
+        AUTH_FAILURES.pop(client_id, None)
+
+
+def require_token(request: Request, x_monitor_token: str = Header(default="")) -> None:
     if not MONITOR_TOKEN:
         raise HTTPException(status_code=503, detail="server token is not configured")
     if not hmac.compare_digest(x_monitor_token, MONITOR_TOKEN):
+        retry_after = record_auth_failure(auth_client_id(request))
+        if retry_after:
+            raise HTTPException(
+                status_code=429,
+                detail="too many authentication failures",
+                headers={"Retry-After": str(retry_after)},
+            )
         raise HTTPException(status_code=401, detail="invalid token")
+    clear_auth_failures(auth_client_id(request))
 
 
 def parse_time(value: object) -> datetime:
@@ -394,6 +435,34 @@ def sync_root_from_runs(state: dict) -> None:
 
 state = load_state()
 app = FastAPI(title="Training Monitor")
+
+
+@app.middleware("http")
+async def enforce_api_security(request: Request, call_next):
+    response = None
+    if request.url.path.startswith("/api/") and request.method in {"POST", "PUT", "PATCH"}:
+        raw_length = request.headers.get("content-length")
+        if raw_length is None:
+            response = JSONResponse(status_code=411, content={"detail": "content-length is required"})
+        else:
+            try:
+                content_length = int(raw_length)
+            except ValueError:
+                response = JSONResponse(status_code=400, content={"detail": "invalid content-length"})
+            else:
+                if content_length < 0:
+                    response = JSONResponse(status_code=400, content={"detail": "invalid content-length"})
+                elif content_length > MAX_REQUEST_BODY_BYTES:
+                    response = JSONResponse(status_code=413, content={"detail": "request body is too large"})
+
+    if response is None:
+        response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 if CORS_ORIGINS:
     app.add_middleware(
